@@ -87,13 +87,37 @@ export async function executeWorkflow(workflow, { retryCount = 2, backoffMs = 15
     if (!succeeded) {
       step.status = 'Failed'; step.error = lastError; execution.status = 'Failed'; execution.error = lastError;
       log('ERROR', lastError, id);
-      // Saga-style demo compensation: run completed nodes explicitly marked as compensatable in reverse order.
-      const compensations = completed.filter(n => n.data?.config?.compensatable === true || /compensation|cancel|refund/i.test(n.data?.label || '')).reverse();
+      // Saga rollback demo: compensate completed steps in reverse order.
+      // Mark a node as compensatable in its config to include it in rollback.
+      const compensations = completed
+        .filter(n => n.data?.config?.compensatable === true)
+        .reverse();
+      let compensationFailed = false;
       for (const comp of compensations) {
-        const compStep = { nodeId: String(comp.id), name: `Compensate: ${comp.data?.label || comp.id}`, status: 'Compensated', startedAt: new Date(), finishedAt: new Date(), attempts: 1 };
-        execution.steps.push(compStep); log('WARN', `Compensation executed: ${compStep.name}.`, String(comp.id));
+        const compensationStartedAt = new Date();
+        const compensationName = comp.data?.config?.compensationLabel || `Compensate: ${comp.data?.label || comp.id}`;
+        const failedCompensation = comp.data?.config?.simulateCompensationFailure === true;
+        const compStep = {
+          nodeId: String(comp.id),
+          name: compensationName,
+          status: failedCompensation ? 'Compensation Failed' : 'Compensated',
+          compensationFor: String(comp.id),
+          startedAt: compensationStartedAt,
+          finishedAt: new Date(),
+          attempts: 1,
+          ...(failedCompensation ? { error: `Compensation failed for ${comp.data?.label || comp.id}` } : {})
+        };
+        compStep.durationMs = compStep.finishedAt - compStep.startedAt;
+        execution.steps.push(compStep);
+        if (failedCompensation) {
+          compensationFailed = true;
+          log('ERROR', compStep.error, String(comp.id));
+        } else {
+          log('WARN', `Saga compensation completed: ${compensationName}.`, String(comp.id));
+        }
       }
-      execution.status = compensations.length ? 'Compensated' : 'Failed';
+      execution.status = compensationFailed ? 'Compensation Failed' : (compensations.length ? 'Compensated' : 'Failed');
+      if (compensationFailed) execution.error = `${lastError}; one or more compensation steps failed.`;
       break;
     }
     step.status = 'Completed'; completed.push(node); log('INFO', `Completed step: ${step.name}.`, id);
