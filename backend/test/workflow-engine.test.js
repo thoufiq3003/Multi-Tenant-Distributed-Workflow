@@ -17,6 +17,18 @@ const edges = [
 test('valid DAG passes validation', () => assert.equal(validateWorkflow({ nodes, edges }).valid, true));
 test('cycle is detected', () => assert.ok(validateWorkflow({ nodes, edges:[...edges,{id:'loop',source:'ship',target:'trigger'}] }).errors.some(e=>e.includes('Loop detected'))));
 test('unreachable node is reported', () => assert.ok(validateWorkflow({ nodes:[...nodes,{id:'orphan',data:{label:'Orphan',sub:'Action'}}], edges }).errors.some(e=>e.includes('Unreachable'))));
+test('self-loop connection is rejected by validator', () => {
+  const selfLoopEdges = [...edges, { id: 'self', source: 'trigger', target: 'trigger' }];
+  const result = validateWorkflow({ nodes, edges: selfLoopEdges });
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some(e => e.includes('cannot connect to itself')));
+});
+
+test('empty workflow nodes array fails validation', () => {
+  const result = validateWorkflow({ nodes: [], edges: [] });
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some(e => e.includes('Add at least one node')));
+});
 test('executor follows configured branch and completes', async () => { const result=await executeWorkflow({id:'WF-TEST',name:'Test workflow',nodes,edges},{backoffMs:0}); assert.equal(result.status,'Completed'); assert.ok(result.steps.some(s=>s.nodeId==='ship')); assert.ok(!result.steps.some(s=>s.nodeId==='cancel')); });
 test('executor retries simulated failure then fails', async () => { const broken=nodes.map(n=>n.id==='ship'?{...n,data:{...n.data,config:{simulateFailure:true}}}:n); const result=await executeWorkflow({id:'WF-TEST',name:'Test workflow',nodes:broken,edges},{retryCount:1,backoffMs:0}); assert.equal(result.status,'Failed'); assert.equal(result.retryCount,1); });
 
