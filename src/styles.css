@@ -31,3 +31,175 @@
 .status-badge.status-draft{background:#f3f5f8;color:#6c7b8f}
 .status-badge.status-compensated{background:#fff3e6;color:#a96112}
 .button:disabled{opacity:.55;cursor:not-allowed;pointer-events:none}
+
+/* Interactive Tenant Switcher Styles */
+.workspace-switch-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 9px;
+  border: 1px solid #30435b;
+  border-radius: 10px;
+  background: #ffffff08;
+  margin-bottom: 20px;
+  color: #fff;
+  cursor: pointer;
+  position: relative;
+  text-align: left;
+  transition: all 0.18s ease;
+}
+.workspace-switch-btn:hover {
+  background: #ffffff14;
+  border-color: #435b7a;
+}
+.workspace-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: #0d2037;
+  border: 1px solid #283e58;
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  z-index: 100;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.workspace-dropdown-title {
+  font-size: 9px;
+  letter-spacing: 0.8px;
+  font-weight: 700;
+  color: #7287a1;
+  padding: 6px 8px 3px;
+}
+.workspace-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 8px;
+  border-radius: 7px;
+  border: 0;
+  background: transparent;
+  color: #cbd7e7;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+  font-size: 11px;
+  transition: background 0.15s ease;
+}
+.workspace-dropdown-item:hover {
+  background: #ffffff12;
+  color: #fff;
+}
+.workspace-dropdown-item.active {
+  background: #2563eb30;
+  color: #60a5fa;
+  font-weight: 600;
+}
+.workspace-dropdown-item .item-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: #1e3a5f;
+  color: #93c5fd;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+.workspace-dropdown-item.active .item-avatar {
+  background: #2563eb;
+  color: #fff;
+}
+.workspace-dropdown-custom {
+  border-top: 1px solid #1a2f47;
+  margin-top: 4px;
+  padding: 8px 6px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.workspace-dropdown-custom input {
+  background: #112741;
+  border: 1px solid #283e58;
+  color: #fff;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 10px;
+  outline: none;
+}
+.workspace-dropdown-custom input:focus {
+  border-color: #3b82f6;
+}
+.workspace-dropdown-custom button {
+  background: #2563eb;
+  color: #fff;
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.workspace-dropdown-custom button:hover {
+  background: #1d4ed8;
+}
+
+/* Live Node Execution Tracing Styles */
+.flow-node.exec-running {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.4), 0 4px 14px rgba(59, 130, 246, 0.25) !important;
+  animation: pulse-node 1.2s infinite ease-in-out;
+}
+.flow-node.exec-completed {
+  border-color: #10b981 !important;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3) !important;
+}
+.flow-node.exec-failed {
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.4) !important;
+}
+.flow-node.exec-compensating {
+  border-color: #f59e0b !important;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.4) !important;
+  animation: pulse-node 1.2s infinite ease-in-out;
+}
+.flow-node.exec-compensated {
+  border-color: #f59e0b !important;
+  background: #fffdf5 !important;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3) !important;
+}
+@keyframes pulse-node {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+}
+.live-stream-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  border-radius: 7px;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.live-stream-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3b82f6;
+  animation: pulse-dot 1s infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.8); }
+}
+
+

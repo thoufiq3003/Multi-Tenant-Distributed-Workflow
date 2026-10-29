@@ -12,12 +12,13 @@
   "dependencies": {
     "@vitejs/plugin-react": "latest",
     "@xyflow/react": "latest",
-    "vite": "latest",
+    "lucide-react": "latest",
     "react": "latest",
     "react-dom": "latest",
     "react-router-dom": "latest",
     "recharts": "latest",
-    "lucide-react": "latest"
+    "socket.io-client": "^4.8.4",
+    "vite": "latest"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

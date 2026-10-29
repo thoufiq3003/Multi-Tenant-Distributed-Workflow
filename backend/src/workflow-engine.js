@@ -48,89 +48,273 @@ export function validateWorkflow({ nodes = [], edges = [] }) {
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-export async function executeWorkflow(workflow, { retryCount = 2, backoffMs = 150 } = {}) {
+export async function executeWorkflow(workflow, {
+  retryCount = 2,
+  backoffMs = 150,
+  context = {},
+  onStepProgress = null
+} = {}) {
   const startedAt = new Date();
   const execution = {
     id: `EX-${randomUUID().slice(0, 8).toUpperCase()}`,
-    workflowId: String(workflow._id || workflow.id), workflowName: workflow.name,
-    status: 'Running', startedAt, finishedAt: null, durationMs: 0,
-    retryCount: 0, steps: [], logs: [], error: null
+    workflowId: String(workflow._id || workflow.id),
+    workflowName: workflow.name,
+    status: 'Running',
+    startedAt,
+    finishedAt: null,
+    durationMs: 0,
+    retryCount: 0,
+    steps: [],
+    logs: [],
+    error: null,
+    context: { ...context }
   };
-  const log = (level, message, nodeId) => execution.logs.push({ at: new Date(), level, message, nodeId });
-  const nodes = workflow.nodes || []; const edges = workflow.edges || [];
+
+  const emit = (eventType, payload) => {
+    if (typeof onStepProgress === 'function') {
+      try {
+        onStepProgress({
+          type: eventType,
+          executionId: execution.id,
+          workflowId: execution.workflowId,
+          timestamp: new Date().toISOString(),
+          ...payload
+        });
+      } catch (_err) {
+        // progress callback errors do not disrupt execution
+      }
+    }
+  };
+
+  const log = (level, message, nodeId) => {
+    const entry = { at: new Date(), level, message, nodeId };
+    execution.logs.push(entry);
+    emit('execution:log', { log: entry });
+  };
+
+  const nodes = workflow.nodes || [];
+  const edges = workflow.edges || [];
   const validation = validateWorkflow({ nodes, edges });
   if (!validation.valid) {
-    execution.status = 'Failed'; execution.error = validation.errors.join(' ');
-    log('ERROR', execution.error); execution.finishedAt = new Date(); execution.durationMs = execution.finishedAt - startedAt;
+    execution.status = 'Failed';
+    execution.error = validation.errors.join(' ');
+    log('ERROR', execution.error);
+    execution.finishedAt = new Date();
+    execution.durationMs = execution.finishedAt - startedAt;
+    emit('execution:finished', { execution });
     return execution;
   }
+
+  emit('execution:started', { execution });
+  log('INFO', `Execution started for workflow “${workflow.name}”.`);
+
   const byId = new Map(nodes.map(n => [String(n.id), n]));
   const outgoing = new Map(nodes.map(n => [String(n.id), []]));
   edges.forEach(e => outgoing.get(String(e.source))?.push(e));
+
   const triggers = nodes.filter(n => /trigger|start/i.test(`${n.data?.sub || ''} ${n.data?.label || ''}`) || n.type === 'input');
-  const queue = triggers.map(n => String(n.id)); const visited = new Set(); const completed = [];
-  log('INFO', `Execution started for workflow “${workflow.name}”.`);
+  const queue = triggers.map(n => String(n.id));
+  const visited = new Set();
+  const completed = [];
+
   while (queue.length) {
-    const id = queue.shift(); if (visited.has(id)) continue; visited.add(id);
-    const node = byId.get(id); if (!node) continue;
-    const step = { nodeId: id, name: node.data?.label || id, status: 'Running', startedAt: new Date(), attempts: 0, logs: [] };
-    execution.steps.push(step); log('INFO', `Started step: ${step.name}.`, id);
+    const id = queue.shift();
+    if (visited.has(id)) continue;
+    visited.add(id);
+    const node = byId.get(id);
+    if (!node) continue;
+
+    const step = {
+      nodeId: id,
+      name: node.data?.label || id,
+      status: 'Running',
+      startedAt: new Date(),
+      attempts: 0,
+      logs: []
+    };
+    execution.steps.push(step);
+    emit('step:started', { nodeId: id, step });
+    log('INFO', `Started step: ${step.name}.`, id);
+
     const configuredFailure = node.data?.config?.simulateFailure === true;
-    let succeeded = false; let lastError = '';
+    const httpUrl = node.data?.config?.url?.trim();
+    let succeeded = false;
+    let lastError = '';
+
     for (let attempt = 0; attempt <= retryCount; attempt++) {
       step.attempts = attempt + 1;
-      if (attempt) { execution.retryCount++; await sleep(backoffMs * (2 ** (attempt - 1))); log('WARN', `Retry ${attempt}/${retryCount} for ${step.name}.`, id); }
-      if (!configuredFailure) { succeeded = true; break; }
-      lastError = `Configured demo failure at ${step.name}`;
+      if (attempt) {
+        execution.retryCount++;
+        emit('step:retry', { nodeId: id, attempt, retryCount, step });
+        await sleep(backoffMs * (2 ** (attempt - 1)));
+        log('WARN', `Retry ${attempt}/${retryCount} for ${step.name}.`, id);
+      }
+
+      if (configuredFailure) {
+        lastError = `Configured demo failure at ${step.name}`;
+        continue;
+      }
+
+      // If a real HTTP URL is configured, perform genuine external HTTP dispatch
+      if (httpUrl) {
+        try {
+          const method = String(node.data?.config?.method || 'GET').toUpperCase();
+          const timeoutMs = Number(node.data?.config?.timeoutMs || 5000);
+          const reqHeaders = {
+            'Content-Type': 'application/json',
+            ...(node.data?.config?.headers || {})
+          };
+          const fetchOptions = {
+            method,
+            headers: reqHeaders,
+            signal: AbortSignal.timeout(timeoutMs)
+          };
+          if (['POST', 'PUT', 'PATCH'].includes(method) && node.data?.config?.body) {
+            fetchOptions.body = typeof node.data.config.body === 'string'
+              ? node.data.config.body
+              : JSON.stringify(node.data.config.body);
+          }
+
+          const response = await fetch(httpUrl, fetchOptions);
+          let responseData = null;
+          const text = await response.text();
+          try { responseData = JSON.parse(text); } catch { responseData = text; }
+
+          step.output = { status: response.status, data: responseData };
+          execution.context[id] = responseData;
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${method} to ${httpUrl} failed with status ${response.status}: ${response.statusText}`);
+          }
+
+          log('INFO', `HTTP request to ${httpUrl} succeeded (${response.status}).`, id);
+          succeeded = true;
+          break;
+        } catch (fetchErr) {
+          lastError = fetchErr.message;
+          log('WARN', `HTTP attempt ${attempt + 1} failed: ${fetchErr.message}`, id);
+          continue;
+        }
+      }
+
+      // Default simulated action succeeds
+      succeeded = true;
+      break;
     }
-    step.finishedAt = new Date(); step.durationMs = step.finishedAt - step.startedAt;
+
+    step.finishedAt = new Date();
+    step.durationMs = step.finishedAt - step.startedAt;
+
     if (!succeeded) {
-      step.status = 'Failed'; step.error = lastError; execution.status = 'Failed'; execution.error = lastError;
+      step.status = 'Failed';
+      step.error = lastError;
+      execution.status = 'Failed';
+      execution.error = lastError;
+      emit('step:failed', { nodeId: id, step, error: lastError });
       log('ERROR', lastError, id);
-      // Saga rollback demo: compensate completed steps in reverse order.
-      // Mark a node as compensatable in its config to include it in rollback.
+
+      // Saga rollback: compensate completed compensatable steps in reverse order
       const compensations = completed
         .filter(n => n.data?.config?.compensatable === true)
         .reverse();
       let compensationFailed = false;
+
       for (const comp of compensations) {
         const compensationStartedAt = new Date();
         const compensationName = comp.data?.config?.compensationLabel || `Compensate: ${comp.data?.label || comp.id}`;
         const failedCompensation = comp.data?.config?.simulateCompensationFailure === true;
+        const compUrl = comp.data?.config?.compensationUrl?.trim();
+
         const compStep = {
           nodeId: String(comp.id),
           name: compensationName,
-          status: failedCompensation ? 'Compensation Failed' : 'Compensated',
+          status: 'Compensating',
           compensationFor: String(comp.id),
           startedAt: compensationStartedAt,
-          finishedAt: new Date(),
-          attempts: 1,
-          ...(failedCompensation ? { error: `Compensation failed for ${comp.data?.label || comp.id}` } : {})
+          finishedAt: null,
+          attempts: 1
         };
-        compStep.durationMs = compStep.finishedAt - compStep.startedAt;
         execution.steps.push(compStep);
+        emit('step:compensating', { nodeId: String(comp.id), compStep });
+
+        // If real compensation HTTP endpoint configured, call it
+        if (compUrl && !failedCompensation) {
+          try {
+            await fetch(compUrl, {
+              method: comp.data?.config?.compensationMethod || 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              signal: AbortSignal.timeout(5000),
+              body: JSON.stringify({ reason: 'Saga rollback', failedAt: step.name, originalNodeId: comp.id })
+            });
+            log('WARN', `Real HTTP rollback executed at ${compUrl}.`, String(comp.id));
+          } catch (compErr) {
+            log('ERROR', `HTTP rollback to ${compUrl} failed: ${compErr.message}`, String(comp.id));
+          }
+        }
+
+        compStep.finishedAt = new Date();
+        compStep.durationMs = compStep.finishedAt - compStep.startedAt;
+
         if (failedCompensation) {
+          compStep.status = 'Compensation Failed';
+          compStep.error = `Compensation failed for ${comp.data?.label || comp.id}`;
           compensationFailed = true;
+          emit('step:compensation_failed', { nodeId: String(comp.id), compStep });
           log('ERROR', compStep.error, String(comp.id));
         } else {
+          compStep.status = 'Compensated';
+          emit('step:compensated', { nodeId: String(comp.id), compStep });
           log('WARN', `Saga compensation completed: ${compensationName}.`, String(comp.id));
         }
       }
+
       execution.status = compensationFailed ? 'Compensation Failed' : (compensations.length ? 'Compensated' : 'Failed');
       if (compensationFailed) execution.error = `${lastError}; one or more compensation steps failed.`;
       break;
     }
-    step.status = 'Completed'; completed.push(node); log('INFO', `Completed step: ${step.name}.`, id);
+
+    step.status = 'Completed';
+    completed.push(node);
+    emit('step:completed', { nodeId: id, step });
+    log('INFO', `Completed step: ${step.name}.`, id);
+
     const outs = outgoing.get(id) || [];
     if (/condition|branch/i.test(`${node.data?.sub || ''} ${node.data?.label || ''}`) && outs.length > 1) {
-      // Demo branching: config.branchResult can be "yes" or "no"; default follows first edge.
-      const desired = String(node.data?.config?.branchResult || 'yes').toLowerCase();
-      const chosen = outs.find(e => String(e.label || '').toLowerCase() === desired) || outs[0];
-      if (chosen) queue.push(String(chosen.target));
-    } else outs.forEach(e => queue.push(String(e.target)));
+      // Dynamic condition evaluation:
+      // Evaluates rule against context/step output if present, or uses config.branchResult
+      const configuredBranch = String(node.data?.config?.branchResult || 'yes').toLowerCase();
+      let chosenBranch = configuredBranch;
+
+      // If condition node specifies an expression rule (e.g. "order.total > 100")
+      const conditionRule = node.data?.config?.rule;
+      if (conditionRule) {
+        try {
+          const pass = Boolean(new Function('ctx', `with(ctx){ return (${conditionRule}); }`)(execution.context));
+          chosenBranch = pass ? 'yes' : 'no';
+          log('INFO', `Rule "${conditionRule}" evaluated to ${pass} (branch "${chosenBranch}").`, id);
+        } catch (ruleErr) {
+          log('WARN', `Rule evaluation fallback to default: ${ruleErr.message}`, id);
+        }
+      }
+
+      const chosenEdge = outs.find(e => {
+        const lbl = String(e.label || '').toLowerCase();
+        return lbl === chosenBranch || (chosenBranch === 'yes' && ['true', 'success', 'yes'].includes(lbl)) || (chosenBranch === 'no' && ['false', 'failure', 'no'].includes(lbl));
+      }) || outs[0];
+
+      if (chosenEdge) {
+        log('INFO', `Branch chosen: “${chosenEdge.label || 'default'}” pointing to node ${chosenEdge.target}.`, id);
+        queue.push(String(chosenEdge.target));
+      }
+    } else {
+      outs.forEach(e => queue.push(String(e.target)));
+    }
   }
+
   if (execution.status === 'Running') execution.status = 'Completed';
-  execution.finishedAt = new Date(); execution.durationMs = execution.finishedAt - startedAt;
+  execution.finishedAt = new Date();
+  execution.durationMs = execution.finishedAt - startedAt;
+  emit('execution:finished', { execution });
   log('INFO', `Execution finished with status ${execution.status}.`);
   return execution;
 }
