@@ -5,3 +5,19 @@ backend/.env
 .DS_Store
 dist/
 backend/logs/
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+*.orig
+
+# Editor and IDE directories
+.idea/
+*.swp
+*.swo
+
+# Runtime logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
