@@ -1,6 +1,25 @@
 import { randomUUID } from 'node:crypto';
 import { executeSandboxedScript } from './sandbox.js';
 
+/**
+ * Core Workflow Orchestrator: Validates and executes a multi-step Directed Acyclic Graph (DAG).
+ *
+ * validateWorkflow:
+ * Validates the workflow DAG for structural integrity using Depth-First Search (DFS)
+ * graph traversal to detect circular dependencies, infinite loops, and disconnected
+ * or orphaned nodes prior to execution.
+ *
+ * executeWorkflow:
+ * Asynchronously executes the workflow with Saga compensation support—traversing the
+ * execution graph topologically, dispatching external HTTP requests, evaluating
+ * conditional branching, and triggering reverse LIFO compensation rollback if an
+ * unrecoverable failure occurs.
+ *
+ * @param {Object} workflow - Workflow definition containing nodes and edges arrays.
+ * @param {Object} [options] - Execution runtime options and progress callbacks.
+ * @returns {Promise<Object>} Execution result trace with validation status, logs, and outputs.
+ */
+
 export function validateWorkflow({ nodes = [], edges = [] }) {
   const errors = [];
   if (!Array.isArray(nodes) || nodes.length === 0) return { valid: false, errors: ['Add at least one node to the workflow.'] };
