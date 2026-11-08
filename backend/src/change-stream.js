@@ -29,13 +29,23 @@ export function emitChangeEvent(document, operationType = 'insert') {
 /**
  * Initializes the Reactive Change Stream Listener.
  * Reactively detects event document inserts and automatically triggers matching workflows.
+ * Supports both real MongoDB Replica Set collection.watch() and adapter emitter.
  */
-export function initChangeStreamListener({ listWorkflows, executeWorkflow, storeExecution, io }) {
+export function initChangeStreamListener({ listWorkflows, executeWorkflow, storeExecution, io, eventModel = null }) {
+  const processedEvents = new Set();
+
   const changeHandler = async (change) => {
     if (change.operationType !== 'insert') return;
 
     const doc = change.fullDocument;
     if (!doc || !doc.tenantId) return;
+
+    const eventDocId = String(doc.id || doc._id || change._id?._data || '');
+    if (eventDocId) {
+      if (processedEvents.has(eventDocId)) return;
+      processedEvents.add(eventDocId);
+      setTimeout(() => processedEvents.delete(eventDocId), 15000);
+    }
 
     const tenantId = doc.tenantId;
     const eventType = String(doc.eventType || 'webhook.event').toLowerCase();
@@ -67,7 +77,7 @@ export function initChangeStreamListener({ listWorkflows, executeWorkflow, store
           retryCount: 2,
           backoffMs: 100,
           context: {
-            event: { id: doc.id, eventType, ...payload },
+            event: { id: doc.id || doc._id, eventType, ...payload },
             ...payload
           },
           onStepProgress: (progress) => {
@@ -81,8 +91,8 @@ export function initChangeStreamListener({ listWorkflows, executeWorkflow, store
         if (io) {
           io.to(`tenant:${tenantId}`).emit('execution:updated', stored);
           io.to(`tenant:${tenantId}`).emit('change-stream:triggered', {
-            changeEventId: change._id?._data,
-            eventId: doc.id,
+            changeEventId: change._id?._data || String(change._id || ''),
+            eventId: doc.id || doc._id,
             eventType,
             workflowId: wf.id,
             workflowName: wf.name,
@@ -97,8 +107,25 @@ export function initChangeStreamListener({ listWorkflows, executeWorkflow, store
 
   changeStreamEmitter.on('change', changeHandler);
 
+  let nativeWatcher = null;
+  if (eventModel && typeof eventModel.watch === 'function' && eventModel.db?.readyState === 1) {
+    try {
+      nativeWatcher = eventModel.watch([{ $match: { operationType: 'insert' } }]);
+      nativeWatcher.on('change', changeHandler);
+      nativeWatcher.on('error', (err) => {
+        console.warn('[ChangeStream] Native MongoDB watch paused (using adapter emitter):', err.message);
+      });
+      console.log('[ChangeStream] Native MongoDB Change Stream watch active on events collection.');
+    } catch (err) {
+      console.warn('[ChangeStream] Native watch init skipped:', err.message);
+    }
+  }
+
   // Return unsubscribe helper
   return () => {
     changeStreamEmitter.off('change', changeHandler);
+    if (nativeWatcher) {
+      nativeWatcher.close().catch(() => {});
+    }
   };
 }

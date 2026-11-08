@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { addEdge, applyEdgeChanges, applyNodeChanges, Background, Controls, MiniMap, ReactFlow, Handle, Position } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { ArrowLeft, Check, CircleHelp, Clock3, Database, GitBranch, Mail, Plus, Save, Send, Settings2, ShoppingCart, Webhook, Trash2, Play, AlertTriangle, RotateCcw, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Check, CircleHelp, Clock3, Database, GitBranch, Mail, Plus, Save, Send, Settings2, ShoppingCart, Webhook, Trash2, Play, AlertTriangle, RotateCcw, ExternalLink, Zap } from 'lucide-react';
 import { Button } from '../components/UI';
 import { api } from '../services/api';
 import { subscribeToTenantEvents } from '../services/socket';
@@ -112,6 +112,11 @@ export default function WorkflowBuilder() {
         } else if (event.type === 'execution:finished') {
           setLiveStreamMessage(`Execution ${event.execution?.id} finished with status: ${event.execution?.status}`);
         }
+      },
+      onChangeStreamTriggered: (event) => {
+        setLiveStreamMessage(`⚡ MongoDB Change Stream caught document insert! Reactively triggered "${event.workflowName}" (${event.executionId})`);
+        setMessage(`Change Stream triggered: ${event.eventType} -> Run ${event.executionId}`);
+        setMessageType('success');
       }
     });
     return unsubscribe;
@@ -295,6 +300,33 @@ export default function WorkflowBuilder() {
     }
   };
 
+  const triggerChangeStream = async () => {
+    setBusy(true);
+    setLiveStreamMessage('Emitting event document to MongoDB events collection...');
+    // Reset node execution styling on canvas
+    setNodes(curr => curr.map(n => ({
+      ...n,
+      data: { ...n.data, executionState: null, executionMessage: null }
+    })));
+
+    try {
+      const orderNumber = `ORD-${Math.floor(1000 + Math.random() * 9000)}`;
+      const result = await api('/events', {
+        method: 'POST',
+        body: JSON.stringify({
+          eventType: 'order.created',
+          payload: { orderId: orderNumber, amount: 199, customer: 'Enterprise Client' }
+        })
+      });
+      setMessage(`⚡ Event ${result.event?.id || ''} saved. MongoDB Change Stream triggered active workflow!`);
+      setMessageType('success');
+    } catch (err) {
+      setMessage(`Change stream event failed: ${err.message}`);
+      setMessageType('error');
+    } finally {
+      setBusy(false);
+    }
+  };
   const reset = () => {
     setNodes(initialNodes);
     setEdges(initialEdges);
@@ -323,6 +355,7 @@ export default function WorkflowBuilder() {
           )}
           <Button variant="secondary" icon={Save} disabled={busy} onClick={save}>Save draft</Button>
           <Button variant="secondary" icon={Play} disabled={busy} onClick={run}>Run test</Button>
+          <Button variant="secondary" icon={Zap} disabled={busy} onClick={triggerChangeStream} title="Insert document into MongoDB events collection to trigger via Change Stream">Simulate Event (Change Stream)</Button>
           <Button icon={Send} disabled={busy} onClick={publish}>Publish workflow</Button>
         </div>
       </div>

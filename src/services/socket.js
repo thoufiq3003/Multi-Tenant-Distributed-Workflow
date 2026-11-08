@@ -32,6 +32,7 @@ export function subscribeToTenantEvents(callbacks = {}) {
   bind('execution:progress', callbacks.onProgress);
   bind('execution:updated', callbacks.onExecutionUpdated);
   bind('workflow:published', callbacks.onWorkflowPublished);
+  bind('change-stream:triggered', callbacks.onChangeStreamTriggered);
 
   return () => {
     handlers.forEach(([event, fn]) => s.off(event, fn));

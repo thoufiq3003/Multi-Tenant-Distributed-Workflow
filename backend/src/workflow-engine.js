@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { executeSandboxedScript } from './sandbox.js';
 
 export function validateWorkflow({ nodes = [], edges = [] }) {
   const errors = [];
@@ -197,6 +198,32 @@ export async function executeWorkflow(workflow, {
         }
       }
 
+      // If a script or transform node is configured, execute inside secure isolated sandbox
+      const scriptCode = node.data?.config?.script || (node.data?.sub?.toLowerCase().includes('transform') ? node.data?.config?.code : null);
+      if (scriptCode) {
+        try {
+          const timeoutMs = Number(node.data?.config?.timeoutMs || 1500);
+          const transformed = await executeSandboxedScript(
+            scriptCode,
+            execution.context[id] || execution.context,
+            execution.context,
+            timeoutMs
+          );
+          step.output = transformed;
+          execution.context[id] = transformed;
+          if (transformed && typeof transformed === 'object' && !Array.isArray(transformed)) {
+            Object.assign(execution.context, transformed);
+          }
+          log('INFO', `Sandboxed transformation executed successfully for ${step.name}.`, id);
+          succeeded = true;
+          break;
+        } catch (sandboxErr) {
+          lastError = sandboxErr.message;
+          log('WARN', `Sandbox attempt ${attempt + 1} failed: ${sandboxErr.message}`, id);
+          continue;
+        }
+      }
+
       // Default simulated action succeeds
       succeeded = true;
       break;
@@ -270,6 +297,11 @@ export async function executeWorkflow(workflow, {
 
       execution.status = compensationFailed ? 'Compensation Failed' : (compensations.length ? 'Compensated' : 'Failed');
       if (compensationFailed) execution.error = `${lastError}; one or more compensation steps failed.`;
+      execution.failedStep = {
+        nodeId: id,
+        name: step.name,
+        error: lastError
+      };
       break;
     }
 

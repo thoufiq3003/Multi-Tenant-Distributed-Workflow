@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "dev:full": "concurrently -k -n API,WEB -c blue,green \"npm run dev --prefix backend\" \"vite\""
+    "dev:full": "concurrently -k -n API,WEB -c blue,green \"npm run dev --prefix backend\" \"vite\"",
+    "test:stress": "node stress-test.js"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
