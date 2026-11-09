@@ -1,0 +1,10 @@
+.trace-pill{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;padding:9px 11px;border-radius:7px;background:#f2f5f9;color:#78879b}
+.trace-pill i{width:7px;height:7px;border-radius:50%;background:#aab4c2}
+.trace-pill.on{background:#eaf9f1;color:#159b68}.trace-pill.on i{background:#1eae73;animation:trace-pulse 1.4s ease-in-out infinite}
+@keyframes trace-pulse{50%{opacity:.35}}
+.timeline-step.running .timeline-rail{color:#13633f;animation:trace-pulse 1.2s ease-in-out infinite}
+.timeline-step.compensating .timeline-rail,.timeline-step.compensated .timeline-rail{color:#e08a1e}
+.timeline-step.compensation-failed .timeline-rail{color:#e4545b}
+.step-payload{margin-top:8px}.step-payload summary{font-size:11px;color:#13633f;cursor:pointer;font-weight:600}
+.step-payload pre{margin:8px 0 0;padding:10px;background:#f7f9fc;border:1px solid #edf0f4;border-radius:7px;font-size:11px;line-height:1.5;max-height:220px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+@media(prefers-reduced-motion:reduce){.trace-pill.on i,.timeline-step.running .timeline-rail{animation:none}}

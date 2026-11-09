@@ -1,0 +1,52 @@
+.auth-page{min-height:100vh;display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);background:var(--cream)}
+.auth-aside{position:sticky;top:0;height:100vh;background:var(--brand-dark);color:#dcefe3;padding:44px 52px;display:flex;flex-direction:column;justify-content:space-between}
+.auth-aside .logo{margin-bottom:0}
+.auth-aside-copy h2{font-size:34px;line-height:1.15;letter-spacing:-.03em;color:#fff;margin:0 0 28px;max-width:440px}
+.auth-aside-copy ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:18px;max-width:440px}
+.auth-aside-copy li{display:flex;gap:14px;align-items:flex-start;font-size:15px;line-height:1.5;color:#c4dccd}
+.auth-aside-copy li svg{flex:none;margin-top:2px;color:var(--accent)}
+.auth-aside small{color:#8fb09c;font-size:12px}
+.auth-main{display:grid;place-items:center;padding:40px 24px}
+.auth-card{width:100%;max-width:440px;background:#fff;border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:36px}
+.auth-card.wide{max-width:640px}
+.auth-card h1{font-size:28px;margin:0;color:var(--ink)}
+.auth-sub{margin:8px 0 24px;color:var(--muted);font-size:15px;line-height:1.5}
+.auth-banner{display:flex;align-items:center;gap:8px;padding:11px 14px;border-radius:12px;font-size:13px;margin-bottom:18px}
+.auth-banner.success{background:#eaf9f1;color:#13633f;border:1px solid #cfe9da}
+.auth-banner.error{background:#fff4f4;color:#b8363f;border:1px solid #f5d3d5}
+.auth-tabs{display:flex;gap:4px;padding:4px;background:var(--brand-soft);border-radius:var(--pill);margin-bottom:20px}
+.auth-tabs button{flex:1;border:0;background:transparent;padding:9px 12px;border-radius:var(--pill);font-size:14px;font-weight:600;color:#3d5a49;cursor:pointer}
+.auth-tabs button.active{background:#fff;color:var(--brand-dark);box-shadow:0 1px 3px #12201a1a}
+.auth-grid{display:grid;grid-template-columns:1fr 1fr;column-gap:16px}
+.auth-field{display:flex;flex-direction:column;margin-bottom:16px;min-width:0}
+.auth-field.full{grid-column:1/-1}
+.auth-field label{font-size:13px;font-weight:600;color:#33443a;margin-bottom:7px}
+.auth-field input,.auth-field select{width:100%;height:46px;border:1px solid #d6ddd8;border-radius:12px;padding:0 14px;font-size:14px;color:var(--ink);background:#fff;outline:0;font-family:inherit}
+.auth-field input:focus,.auth-field select:focus{border-color:var(--brand);box-shadow:0 0 0 3px #13633f1f}
+.auth-field [aria-invalid="true"]{border-color:#e4545b}
+.auth-field [aria-invalid="true"]:focus{box-shadow:0 0 0 3px #e4545b22}
+.auth-password{position:relative}.auth-password input{padding-right:46px}
+.auth-password button{position:absolute;right:4px;top:4px;height:38px;width:38px;border:0;background:transparent;border-radius:9px;color:#6b7a72;display:grid;place-items:center;cursor:pointer}
+.auth-password button:hover{background:var(--brand-soft);color:var(--brand)}
+.auth-error{color:#c63a44;font-size:12px;margin-top:6px}
+.auth-hint{color:var(--muted);font-size:12px;margin-top:6px}
+.auth-check{display:flex;align-items:center;gap:10px;font-size:13px;color:#33443a;margin:4px 0 8px;cursor:pointer}
+.auth-check input{width:17px;height:17px;accent-color:var(--brand)}
+.auth-submit{width:100%;margin-top:14px;padding:14px 22px}
+.auth-submit:disabled{opacity:.65;cursor:progress}
+.auth-switch{text-align:center;font-size:14px;color:var(--muted);margin:22px 0 0}
+.auth-switch a{color:var(--brand);font-weight:700}.auth-switch a:hover{text-decoration:underline}
+.auth-page :focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.auth-field input:focus-visible,.auth-field select:focus-visible{outline:0}
+@media(max-width:900px){
+  .auth-page{grid-template-columns:1fr}
+  .auth-aside{position:static;height:auto;padding:22px 24px;gap:0}
+  .auth-aside-copy,.auth-aside small{display:none}
+  .auth-main{padding:24px 16px 40px}
+}
+@media(max-width:560px){.auth-card{padding:24px 20px}.auth-grid{grid-template-columns:1fr}}
+
+/* Sign out button in the app header */
+.signout-btn{display:inline-flex;align-items:center;gap:7px;height:42px;padding:0 14px;border:1px solid #cdd6cf;background:#fff;border-radius:var(--pill);font-size:14px;font-weight:600;color:var(--ink);cursor:pointer}
+.signout-btn:hover{background:var(--brand-soft);border-color:#b9d8c4;color:var(--brand)}
+@media(max-width:1100px){.signout-btn span{display:none}.signout-btn{padding:0 12px}}
