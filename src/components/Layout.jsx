@@ -1,12 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
-import { NavLink, Link, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, Link, Outlet, useLocation } from "react-router-dom";
 import {
   Activity, AlertTriangle, Bell, Building2, ChevronDown, LayoutDashboard, Plug, Search,
-  Settings, ShieldCheck, Workflow, X, Check, Plus, Menu, LogOut
+  Settings, ShieldCheck, Workflow, X, Check, Plus, Menu
 } from "lucide-react";
 import { getActiveTenantMeta, setActiveTenant, KNOWN_TENANTS } from "../services/api";
-import { getUser, logout } from "../services/auth";
-import "../pages/auth.css";
 
 // Same destinations as before — now arranged like a marketing-site header (flat links + dropdown groups)
 const navItems = [
@@ -35,9 +33,6 @@ export default function Layout() {
   const [progress, setProgress] = useState(0);
   const dropdownRef = useRef(null);
   const location = useLocation();
-  const navigate = useNavigate();
-  const user = getUser();
-  const signOut = () => { logout(); navigate("/login", { replace: true }); };
 
   useEffect(() => { const t = setTimeout(() => setLoading(false), 1100); return () => clearTimeout(t); }, []);
   useEffect(() => {
@@ -139,10 +134,6 @@ export default function Layout() {
                 </div>
               )}
             </div>
-
-            <button type="button" className="signout-btn" onClick={signOut} title={user ? `Signed in as ${user.name}` : "Sign out"}>
-              <LogOut size={16} /><span>Sign out</span>
-            </button>
           </div>
         </div>
       </header>
@@ -159,7 +150,6 @@ export default function Layout() {
           </React.Fragment>
         ) : <NavLink key={item.to} to={item.to} className={({ isActive }) => `site-nav-link ${isActive ? "active" : ""}`}>{item.label}</NavLink>)}
         <Link to="/workflows/new" className="button button-primary" style={{ marginTop: 18 }}>New workflow</Link>
-        <button type="button" className="button button-secondary" style={{ marginTop: 10 }} onClick={signOut}>Sign out</button>
       </aside>
 
       <div className="app-main">

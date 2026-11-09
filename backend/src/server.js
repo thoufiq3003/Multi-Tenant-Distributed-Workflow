@@ -10,8 +10,6 @@ import { Server as SocketServer } from 'socket.io';
 import Workflow from './models/Workflow.js';
 import Execution from './models/Execution.js';
 import ApiKey from './models/ApiKey.js';
-import User from './models/User.js';
-import { validateRegistration, isValidEmail, isValidPhone, hashPassword, verifyPassword, signToken, verifyToken, workspaceIdFor } from './auth.js';
 import { executeWorkflow, validateWorkflow } from './workflow-engine.js';
 import { emitChangeEvent, initChangeStreamListener } from './change-stream.js';
 
@@ -26,7 +24,6 @@ const workflowsMemory = new Map();
 const executionsMemory = new Map();
 const keysMemory = new Map();
 const eventsMemory = new Map();
-const usersMemory = new Map();
 const scopedKey = (tenantId, id) => `${tenantId}:${id}`;
 
 // Cryptographic hash helper for API keys
@@ -125,7 +122,7 @@ app.use(rateLimit({
 // 3. Cryptographic API Key Authentication Middleware
 app.use(async (req, res, next) => {
   // Public health check endpoint
-  if (req.path === '/api/health' || req.path.startsWith('/api/auth/')) return next();
+  if (req.path === '/api/health') return next();
 
   const authHeader = req.header('authorization');
   const apiKeyHeader = req.header('x-api-key');
@@ -176,42 +173,6 @@ function plain(doc) {
   x.id = String(x._id || x.id);
   delete x.__v;
   return x;
-}
-
-// ---- User accounts (MongoDB when connected, memory fallback otherwise) ----
-const publicUser = u => u && ({
-  id: String(u._id || u.id), name: u.name, email: u.email, phone: u.phone,
-  organization: u.organization, role: u.role, tenantId: u.tenantId,
-  createdAt: u.createdAt, lastLoginAt: u.lastLoginAt || null
-});
-
-export async function findUser({ email, phone, id }) {
-  if (mongoReady) {
-    if (id) return mongoose.isValidObjectId(id) ? User.findById(id).lean() : null;
-    return User.findOne(email ? { email } : { phone }).lean();
-  }
-  return [...usersMemory.values()].find(u => (id && u.id === id) || (email && u.email === email) || (phone && u.phone === phone)) || null;
-}
-
-export async function createUser(values) {
-  const record = {
-    name: values.name, email: values.email, phone: values.phone,
-    organization: values.organization, role: values.role,
-    tenantId: workspaceIdFor(values.organization),
-    passwordHash: hashPassword(values.password),
-    createdAt: new Date()
-  };
-  if (mongoReady) return (await User.create(record)).toObject();
-  const item = { ...record, id: `USR-${crypto.randomUUID().slice(0, 8).toUpperCase()}` };
-  usersMemory.set(item.id, item);
-  return item;
-}
-
-async function markLogin(user) {
-  const at = new Date();
-  if (mongoReady) await User.updateOne({ _id: user._id }, { $set: { lastLoginAt: at } });
-  else user.lastLoginAt = at;
-  user.lastLoginAt = at;
 }
 
 export async function listWorkflows(tenantId) {
@@ -528,66 +489,6 @@ app.get('/api/metrics', async (req, res, next) => {
       recentExecutions: executions.slice(0,8)
     });
   } catch(e) { next(e); }
-});
-
-// --- AUTHENTICATION ---
-const authLimiter = rateLimit({
-  windowMs: 60_000,
-  limit: 20,
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  message: { error: 'Too many attempts. Please wait a minute and try again.' }
-});
-const DUMMY_HASH = hashPassword('not-a-real-password');
-
-app.post('/api/auth/register', authLimiter, async (req, res, next) => {
-  try {
-    const { errors, values } = validateRegistration(req.body);
-    if (Object.keys(errors).length) return res.status(400).json({ error: 'Please fix the highlighted fields.', fields: errors });
-    const [byEmail, byPhone] = await Promise.all([findUser({ email: values.email }), findUser({ phone: values.phone })]);
-    if (byEmail || byPhone) {
-      const fields = {};
-      if (byEmail) fields.email = 'An account with this email already exists.';
-      if (byPhone) fields.phone = 'An account with this phone number already exists.';
-      return res.status(409).json({ error: 'Account already exists. Sign in instead.', fields });
-    }
-    const user = await createUser(values);
-    res.status(201).json({ ok: true, user: publicUser(user) });
-  } catch (e) {
-    if (e?.code === 11000) return res.status(409).json({ error: 'Account already exists. Sign in instead.' });
-    next(e);
-  }
-});
-
-app.post('/api/auth/login', authLimiter, async (req, res, next) => {
-  try {
-    const method = req.body?.method === 'phone' ? 'phone' : 'email';
-    const identifier = String(req.body?.identifier || '').trim();
-    const password = String(req.body?.password || '');
-    const valid = method === 'phone' ? isValidPhone(identifier) : isValidEmail(identifier);
-    if (!valid) {
-      return res.status(400).json({
-        error: method === 'phone' ? 'Enter a 10-digit phone number, digits only.' : 'Enter a valid email address, like name@company.com.',
-        fields: { identifier: method === 'phone' ? 'Enter a 10-digit phone number, digits only.' : 'Enter a valid email address, like name@company.com.' }
-      });
-    }
-    if (!password) return res.status(400).json({ error: 'Enter your password.', fields: { password: 'Enter your password.' } });
-    const user = await findUser(method === 'phone' ? { phone: identifier } : { email: identifier.toLowerCase() });
-    // Always run a hash comparison so response time does not reveal whether the account exists
-    const ok = verifyPassword(password, user ? user.passwordHash : DUMMY_HASH);
-    if (!user || !ok) return res.status(401).json({ error: 'Incorrect email/phone or password.' });
-    await markLogin(user);
-    res.json({ ok: true, token: signToken(String(user._id || user.id)), user: publicUser(user) });
-  } catch (e) { next(e); }
-});
-
-app.get('/api/auth/me', async (req, res, next) => {
-  try {
-    const userId = verifyToken(req.header('x-session-token'));
-    const user = userId ? await findUser({ id: userId }) : null;
-    if (!user) return res.status(401).json({ error: 'Session expired. Please sign in again.' });
-    res.json({ user: publicUser(user) });
-  } catch (e) { next(e); }
 });
 
 app.get('/api/admin/overview', async (req, res, next) => {
