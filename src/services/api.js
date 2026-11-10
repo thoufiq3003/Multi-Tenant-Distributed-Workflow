@@ -7,24 +7,24 @@ export const KNOWN_TENANTS = [
 ];
 
 export function getActiveTenant() {
-  return localStorage.getItem('flowpilot.tenantId') || 'demo-tenant';
+  return localStorage.getItem('aegisflow.tenantId') || 'demo-tenant';
 }
 
 export function getActiveTenantMeta() {
   const currentId = getActiveTenant();
   const known = KNOWN_TENANTS.find(t => t.id === currentId);
   if (known) return known;
-  const storedName = localStorage.getItem(`flowpilot.tenantName.${currentId}`) || currentId;
+  const storedName = localStorage.getItem(`aegisflow.tenantName.${currentId}`) || currentId;
   return { id: currentId, name: storedName, plan: 'Custom tenant', avatar: currentId.charAt(0).toUpperCase() };
 }
 
 export function setActiveTenant(tenantId, tenantName) {
   const sanitized = String(tenantId).trim();
-  localStorage.setItem('flowpilot.tenantId', sanitized);
+  localStorage.setItem('aegisflow.tenantId', sanitized);
   if (tenantName) {
-    localStorage.setItem(`flowpilot.tenantName.${sanitized}`, tenantName);
+    localStorage.setItem(`aegisflow.tenantName.${sanitized}`, tenantName);
   }
-  window.dispatchEvent(new CustomEvent('flowpilot:tenant-changed', {
+  window.dispatchEvent(new CustomEvent('aegisflow:tenant-changed', {
     detail: { tenantId: sanitized, tenantName }
   }));
 }
@@ -36,7 +36,7 @@ export const DEFAULT_DEMO_KEYS = {
 };
 
 export function getActiveApiKey(tenantId = getActiveTenant()) {
-  const customKey = localStorage.getItem(`flowpilot.apiKey.${tenantId}`);
+  const customKey = localStorage.getItem(`aegisflow.apiKey.${tenantId}`);
   if (customKey && customKey.trim()) return customKey.trim();
   // Return seeded demo key for known tenants
   return DEFAULT_DEMO_KEYS[tenantId] || '';
@@ -44,24 +44,26 @@ export function getActiveApiKey(tenantId = getActiveTenant()) {
 
 export function setActiveApiKey(tenantId, key) {
   if (!key) {
-    localStorage.removeItem(`flowpilot.apiKey.${tenantId}`);
+    localStorage.removeItem(`aegisflow.apiKey.${tenantId}`);
   } else {
-    localStorage.setItem(`flowpilot.apiKey.${tenantId}`, key.trim());
+    localStorage.setItem(`aegisflow.apiKey.${tenantId}`, key.trim());
   }
 }
 
 export function resetToDefaultApiKey(tenantId = getActiveTenant()) {
-  localStorage.removeItem(`flowpilot.apiKey.${tenantId}`);
+  localStorage.removeItem(`aegisflow.apiKey.${tenantId}`);
   return getActiveApiKey(tenantId);
 }
 
 export async function api(path, options = {}) {
   const tenantId = getActiveTenant();
   let apiKey = getActiveApiKey(tenantId);
+  const sessionToken = localStorage.getItem('aegisflow.token');
   const headers = {
     'Content-Type': 'application/json',
     'x-tenant-id': tenantId,
     ...(apiKey ? { 'x-api-key': apiKey } : {}),
+    ...(sessionToken ? { 'x-session-token': sessionToken } : {}),
     ...(options.headers || {})
   };
 
@@ -72,15 +74,16 @@ export async function api(path, options = {}) {
 
   // Self-healing: if an expired/invalid custom key in localStorage was rejected by backend
   if (response.status === 401 && apiKey) {
-    const storedCustomKey = localStorage.getItem(`flowpilot.apiKey.${tenantId}`);
+    const storedCustomKey = localStorage.getItem(`aegisflow.apiKey.${tenantId}`);
     if (storedCustomKey) {
-      console.warn(`[FlowPilot API] Stored API key for "${tenantId}" was rejected (401). Clearing stale key and retrying with default demo credentials.`);
-      localStorage.removeItem(`flowpilot.apiKey.${tenantId}`);
+      console.warn(`[Aegisflow API] Stored API key for "${tenantId}" was rejected (401). Clearing stale key and retrying with default demo credentials.`);
+      localStorage.removeItem(`aegisflow.apiKey.${tenantId}`);
       apiKey = getActiveApiKey(tenantId);
       const retryHeaders = {
         'Content-Type': 'application/json',
         'x-tenant-id': tenantId,
         ...(apiKey ? { 'x-api-key': apiKey } : {}),
+        ...(sessionToken ? { 'x-session-token': sessionToken } : {}),
         ...(options.headers || {})
       };
       response = await fetch(`${API_BASE}${path}`, {

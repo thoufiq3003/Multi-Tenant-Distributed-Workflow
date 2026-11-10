@@ -8,7 +8,7 @@ test('emitChangeEvent produces official MongoDB Change Stream payload structure'
   const change = emitChangeEvent(doc, 'insert');
 
   assert.equal(change.operationType, 'insert');
-  assert.equal(change.ns.db, 'flowpilot');
+  assert.equal(change.ns.db, 'aegisflow');
   assert.equal(change.ns.coll, 'events');
   assert.equal(change.documentKey._id, 'EVT-101');
   assert.equal(change.fullDocument.eventType, 'order.created');

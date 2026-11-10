@@ -1,5 +1,5 @@
 /**
- * FlowPilot — 1,000+ Concurrent Distributed Execution Pipelines Stress Test
+ * Aegisflow — 1,000+ Concurrent Distributed Execution Pipelines Stress Test
  * 
  * Complies with Zaalima Week 4 requirement:
  * "Run stress testing against the orchestrator with 1,000+ concurrent distributed execution pipelines."
@@ -105,7 +105,7 @@ function calculatePercentile(sortedArr, p) {
 
 async function runStressTest() {
   console.log('='.repeat(70));
-  console.log('  FLOWPILOT DISTRIBUTED ORCHESTRATOR — 1,000+ CONCURRENT STRESS TEST');
+  console.log('  AEGISFLOW DISTRIBUTED ORCHESTRATOR — 1,000+ CONCURRENT STRESS TEST');
   console.log('='.repeat(70));
   console.log(` Target Pipelines   : ${TOTAL_PIPELINES.toLocaleString()}`);
   console.log(` Concurrency Pool   : ${CONCURRENCY_LIMIT} concurrent in-flight workers`);

@@ -6,7 +6,7 @@ import "./auth.css";
 
 export function AuthAside() {
   return <aside className="auth-aside">
-    <Link to="/login" className="logo"><span className="logo-mark"><Workflow size={20}/></span>FlowPilot</Link>
+    <Link to="/login" className="logo"><span className="logo-mark"><Workflow size={20}/></span>Aegisflow</Link>
     <div className="auth-aside-copy">
       <h2>Run every workflow with Saga rollback built in.</h2>
       <ul>

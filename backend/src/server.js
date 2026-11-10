@@ -1,5 +1,13 @@
 import 'dotenv/config';
 import crypto from 'node:crypto';
+import dns from 'node:dns';
+
+// Resolve MongoDB SRV records cleanly across residential ISPs and local Wi-Fi (fixes querySrv ECONNREFUSED)
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+} catch {
+  // Ignore in restricted sandbox environments
+}
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -10,8 +18,13 @@ import { Server as SocketServer } from 'socket.io';
 import Workflow from './models/Workflow.js';
 import Execution from './models/Execution.js';
 import ApiKey from './models/ApiKey.js';
+import Event from './models/Event.js';
+import Dlq from './models/Dlq.js';
+import User from './models/User.js';
+import { validateRegistration, isValidEmail, isValidPhone, hashPassword, verifyPassword, signToken, verifyToken, workspaceIdFor } from './auth.js';
 import { executeWorkflow, validateWorkflow } from './workflow-engine.js';
 import { emitChangeEvent, initChangeStreamListener } from './change-stream.js';
+import { WORKFLOW_DEFINITIONS, generateSeedExecutions } from './seed-data.js';
 
 const app = express();
 const server = createServer(app);
@@ -24,6 +37,8 @@ const workflowsMemory = new Map();
 const executionsMemory = new Map();
 const keysMemory = new Map();
 const eventsMemory = new Map();
+const dlqMemory = new Map();
+const usersMemory = new Map();
 const scopedKey = (tenantId, id) => `${tenantId}:${id}`;
 
 // Cryptographic hash helper for API keys
@@ -77,12 +92,46 @@ workflowsMemory.set(scopedKey('demo-tenant', DEFAULT_WF_ID), {
   name: 'Order Processing',
   description: 'Process new orders from store to warehouse with Saga compensation rollback support',
   status: 'Active',
+  executionCount: 54,
   nodes: STARTER_NODES,
   edges: STARTER_EDGES,
   settings: { timeoutMinutes: 5, failureBehavior: 'retry-then-compensate' },
   createdAt: new Date(),
   updatedAt: new Date()
 });
+
+// Seed memory fallback with 50 enterprise workflows and realistic execution history
+const { executions: seedExecutions, dlqItems: seedDlq } = generateSeedExecutions(WORKFLOW_DEFINITIONS);
+
+for (const wf of WORKFLOW_DEFINITIONS) {
+  workflowsMemory.set(scopedKey(wf.tenantId, wf.id), {
+    ...wf,
+    createdAt: new Date(),
+    updatedAt: new Date()
+  });
+}
+
+for (const exec of seedExecutions) {
+  executionsMemory.set(scopedKey(exec.tenantId, exec.id), exec);
+}
+
+for (const dlq of seedDlq) {
+  dlqMemory.set(scopedKey(dlq.tenantId, dlq.id), dlq);
+}
+
+// Pre-seed demo user in memory store for instant evaluation
+const DEMO_USER_RAW = {
+  id: 'USR-DEMO-001',
+  name: 'Alex Mercer',
+  email: 'demo@aegisflow.dev',
+  phone: '9876543210',
+  organization: 'Acme Ltd.',
+  role: 'Workflow admin',
+  tenantId: 'demo-tenant',
+  passwordHash: hashPassword('Password123!'),
+  createdAt: new Date()
+};
+usersMemory.set(DEMO_USER_RAW.id, DEMO_USER_RAW);
 
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({ origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173' }));
@@ -121,30 +170,62 @@ app.use(rateLimit({
 
 // 3. Cryptographic API Key Authentication Middleware
 app.use(async (req, res, next) => {
-  // Public health check endpoint
-  if (req.path === '/api/health') return next();
+  // Public health check and auth endpoints
+  if (req.path === '/api/health' || req.path.startsWith('/api/auth/')) return next();
 
   const authHeader = req.header('authorization');
   const apiKeyHeader = req.header('x-api-key');
+  const sessionHeader = req.header('x-session-token');
   let rawKey = null;
 
   if (apiKeyHeader) {
     rawKey = apiKeyHeader.trim();
   } else if (authHeader && authHeader.startsWith('Bearer ')) {
-    rawKey = authHeader.slice(7).trim();
+    const candidate = authHeader.slice(7).trim();
+    if (candidate.startsWith('fp_')) {
+      rawKey = candidate;
+    }
   }
 
+  // 1. If an API key is provided, validate it
   if (rawKey) {
     const hash = hashApiKey(rawKey);
     const keyRecord = await findApiKeyByHash(req.tenantId, hash);
-    if (!keyRecord) {
-      return res.status(401).json({
-        error: 'Unauthorized: Invalid, expired, or cross-tenant API key.'
-      });
+    if (keyRecord) {
+      req.apiKey = keyRecord;
+      req.authType = 'api-key';
+      return next();
     }
-    req.apiKey = keyRecord;
-    req.authType = 'api-key';
-    return next();
+    // If API key check failed, but a session token exists, check session token
+    const tokenCandidate = sessionHeader || (authHeader?.startsWith('Bearer ') && !authHeader.slice(7).trim().startsWith('fp_') ? authHeader.slice(7).trim() : null);
+    if (tokenCandidate) {
+      const userId = verifyToken(tokenCandidate);
+      if (userId) {
+        const user = await findUser({ id: userId });
+        if (user) {
+          req.user = user;
+          req.authType = 'session';
+          return next();
+        }
+      }
+    }
+    return res.status(401).json({
+      error: 'Unauthorized: Invalid, expired, or cross-tenant API key.'
+    });
+  }
+
+  // 2. Check for session token (from web browser login)
+  const tokenCandidate = sessionHeader || (authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null);
+  if (tokenCandidate) {
+    const userId = verifyToken(tokenCandidate);
+    if (userId) {
+      const user = await findUser({ id: userId });
+      if (user) {
+        req.user = user;
+        req.authType = 'session';
+        return next();
+      }
+    }
   }
 
   // If strict enforcement is enabled, reject requests without valid key
@@ -170,9 +251,102 @@ io.on('connection', socket => socket.join(`tenant:${socket.data.tenantId}`));
 function plain(doc) {
   if (!doc) return null;
   const x = doc.toObject ? doc.toObject() : { ...doc };
-  x.id = String(x._id || x.id);
+  x.id = String(x.id || x._id);
   delete x.__v;
   return x;
+}
+
+// ---- User accounts (MongoDB when connected, memory fallback otherwise) ----
+const publicUser = u => u && ({
+  id: String(u._id || u.id), name: u.name, email: u.email, phone: u.phone,
+  organization: u.organization, role: u.role, tenantId: u.tenantId,
+  createdAt: u.createdAt, lastLoginAt: u.lastLoginAt || null
+});
+
+export async function findUser({ email, phone, id }) {
+  if (mongoReady) {
+    if (id) return mongoose.isValidObjectId(id) ? User.findById(id).lean() : null;
+    return User.findOne(email ? { email } : { phone }).lean();
+  }
+  return [...usersMemory.values()].find(u => (id && u.id === id) || (email && u.email === email) || (phone && u.phone === phone)) || null;
+}
+
+export async function createUser(values) {
+  const record = {
+    name: values.name, email: values.email, phone: values.phone,
+    organization: values.organization, role: values.role,
+    tenantId: workspaceIdFor(values.organization),
+    passwordHash: hashPassword(values.password),
+    createdAt: new Date()
+  };
+  if (mongoReady) return (await User.create(record)).toObject();
+  const item = { ...record, id: `USR-${crypto.randomUUID().slice(0, 8).toUpperCase()}` };
+  usersMemory.set(item.id, item);
+  return item;
+}
+
+async function markLogin(user) {
+  const at = new Date();
+  if (mongoReady) await User.updateOne({ _id: user._id }, { $set: { lastLoginAt: at } });
+  else user.lastLoginAt = at;
+  user.lastLoginAt = at;
+}
+
+export async function pushToDlq(tenantId, execution) {
+  if (!['Failed', 'Compensated', 'Compensation Failed'].includes(execution.status)) return null;
+
+  const id = `DLQ-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+  const dlqItem = {
+    id,
+    tenantId,
+    executionId: execution.id,
+    workflowId: String(execution.workflowId),
+    workflowName: execution.workflowName || 'Workflow',
+    failedStepId: execution.failedStep?.nodeId || '',
+    failedStepName: execution.failedStep?.name || 'Failed Step',
+    error: execution.error || execution.status,
+    payload: execution.context || {},
+    retryCount: execution.retryCount || 0,
+    status: 'dead',
+    createdAt: new Date()
+  };
+
+  if (mongoReady) {
+    try {
+      const created = await Dlq.create(dlqItem);
+      const plainItem = plain(created);
+      io.to(`tenant:${tenantId}`).emit('dlq:item_added', plainItem);
+      return plainItem;
+    } catch (err) {
+      console.error('[DLQ] Error storing in MongoDB:', err.message);
+    }
+  }
+
+  dlqMemory.set(scopedKey(tenantId, id), dlqItem);
+  io.to(`tenant:${tenantId}`).emit('dlq:item_added', dlqItem);
+  return dlqItem;
+}
+
+export async function listDlq(tenantId) {
+  if (mongoReady) {
+    return (await Dlq.find({ tenantId }).sort({ createdAt: -1 })).map(plain);
+  }
+  return [...dlqMemory.values()]
+    .filter(d => d.tenantId === tenantId)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
+export async function deleteDlq(tenantId, id) {
+  if (mongoReady) {
+    let res;
+    if (mongoose.isValidObjectId(id)) {
+      res = await Dlq.deleteOne({ _id: id, tenantId });
+    } else {
+      res = await Dlq.deleteOne({ id, tenantId });
+    }
+    if (res && res.deletedCount > 0) return true;
+  }
+  return dlqMemory.delete(scopedKey(tenantId, id));
 }
 
 export async function listWorkflows(tenantId) {
@@ -186,6 +360,8 @@ export async function getWorkflow(tenantId, id) {
       const byId = await Workflow.findOne({ _id: id, tenantId });
       if (byId) return plain(byId);
     }
+    const byCustomId = await Workflow.findOne({ id, tenantId });
+    if (byCustomId) return plain(byCustomId);
     return null;
   }
   return workflowsMemory.get(scopedKey(tenantId, id)) || null;
@@ -234,12 +410,21 @@ export async function saveWorkflow(tenantId, body, id = null) {
 
 export async function storeExecution(tenantId, data) {
   const item = { ...data, tenantId };
+  let stored;
   if (mongoReady) {
     const doc = await Execution.create({ ...item, workflowId: String(item.workflowId) });
-    return plain(doc);
+    stored = plain(doc);
+  } else {
+    executionsMemory.set(scopedKey(tenantId, item.id), item);
+    stored = item;
   }
-  executionsMemory.set(scopedKey(tenantId, item.id), item);
-  return item;
+
+  // Automatic Dead-Letter Queue (DLQ) routing for exhausted/failed executions
+  if (['Failed', 'Compensated', 'Compensation Failed'].includes(stored.status)) {
+    await pushToDlq(tenantId, stored);
+  }
+
+  return stored;
 }
 
 export async function listExecutions(tenantId, workflowId) {
@@ -255,7 +440,12 @@ export async function listExecutions(tenantId, workflowId) {
 
 export async function getExecution(tenantId, id) {
   if (mongoReady) {
-    if (mongoose.isValidObjectId(id)) return plain(await Execution.findOne({ _id: id, tenantId }));
+    if (mongoose.isValidObjectId(id)) {
+      const doc = await Execution.findOne({ _id: id, tenantId });
+      if (doc) return plain(doc);
+    }
+    const docByCustomId = await Execution.findOne({ id, tenantId });
+    if (docByCustomId) return plain(docByCustomId);
     return null;
   }
   return executionsMemory.get(scopedKey(tenantId, id)) || null;
@@ -264,7 +454,8 @@ export async function getExecution(tenantId, id) {
 // API Key Management Store Helpers
 export async function listApiKeys(tenantId) {
   if (mongoReady) {
-    return (await ApiKey.find({ tenantId }).sort({ createdAt: -1 })).map(plain);
+    const list = (await ApiKey.find({ tenantId }).sort({ createdAt: -1 })).map(plain);
+    if (list.length > 0) return list;
   }
   return [...keysMemory.values()]
     .filter(k => k.tenantId === tenantId)
@@ -303,16 +494,51 @@ export async function revokeApiKey(tenantId, id) {
 export async function findApiKeyByHash(tenantId, hash) {
   if (mongoReady) {
     const doc = await ApiKey.findOne({ tenantId, hash });
-    return plain(doc);
+    if (doc) return plain(doc);
   }
-  return [...keysMemory.values()].find(k => k.tenantId === tenantId && k.hash === hash) || null;
+  // Fallback to in-memory keys
+  const memKey = [...keysMemory.values()].find(k => k.tenantId === tenantId && k.hash === hash);
+  if (memKey) return memKey;
+
+  // Direct fallback to SEEDED_DEMO_KEYS
+  for (const [tId, meta] of Object.entries(SEEDED_DEMO_KEYS)) {
+    if (tId === tenantId && hashApiKey(meta.key) === hash) {
+      return {
+        id: meta.id,
+        tenantId: tId,
+        label: meta.label,
+        hash,
+        lastFour: meta.key.slice(-4),
+        createdAt: new Date()
+      };
+    }
+  }
+
+  return null;
+}
+
+export async function ensureDemoApiKeys() {
+  if (!mongoReady) return;
+  for (const [tId, meta] of Object.entries(SEEDED_DEMO_KEYS)) {
+    const hash = hashApiKey(meta.key);
+    const existing = await ApiKey.findOne({ tenantId: tId, hash });
+    if (!existing) {
+      await ApiKey.create({
+        tenantId: tId,
+        label: meta.label,
+        hash,
+        lastFour: meta.key.slice(-4),
+        createdAt: new Date()
+      });
+    }
+  }
 }
 
 // --- REST ENDPOINTS ---
 
 app.get('/api/health', (_req, res) => res.json({
   ok: true,
-  service: 'flowpilot-api',
+  service: 'aegisflow-api',
   database: mongoReady ? 'mongodb' : 'memory-demo',
   time: new Date().toISOString()
 }));
@@ -472,6 +698,138 @@ app.delete('/api/api-keys/:id', async (req, res, next) => {
   } catch(e) { next(e); }
 });
 
+// --- DEAD-LETTER QUEUE (DLQ) ENDPOINTS ---
+
+app.get('/api/dlq', async (req, res, next) => {
+  try {
+    const items = await listDlq(req.tenantId);
+    res.json(items);
+  } catch(e) { next(e); }
+});
+
+app.post('/api/dlq/:id/replay', async (req, res, next) => {
+  try {
+    const dlqItems = await listDlq(req.tenantId);
+    const item = dlqItems.find(d => d.id === req.params.id || String(d._id) === req.params.id);
+    if (!item) return res.status(404).json({ error: 'DLQ item not found for this tenant.' });
+
+    const workflow = await getWorkflow(req.tenantId, item.workflowId);
+    if (!workflow) return res.status(404).json({ error: 'Original workflow not found for replay.' });
+
+    // Replay execution using captured context/payload
+    const result = await executeWorkflow(workflow, {
+      retryCount: 2,
+      backoffMs: 100,
+      context: item.payload || {},
+      onStepProgress: (progress) => {
+        io.to(`tenant:${req.tenantId}`).emit('execution:progress', progress);
+      }
+    });
+
+    const stored = await storeExecution(req.tenantId, result);
+    io.to(`tenant:${req.tenantId}`).emit('execution:updated', stored);
+
+    // Mark DLQ item as replayed
+    if (mongoReady) {
+      if (mongoose.isValidObjectId(item._id || item.id)) {
+        await Dlq.updateOne({ _id: item._id || item.id, tenantId: req.tenantId }, {
+          $set: { status: 'replayed', replayedAt: new Date(), replayedExecutionId: stored.id }
+        });
+      } else {
+        await Dlq.updateOne({ id: item.id, tenantId: req.tenantId }, {
+          $set: { status: 'replayed', replayedAt: new Date(), replayedExecutionId: stored.id }
+        });
+      }
+    } else {
+      const memItem = dlqMemory.get(scopedKey(req.tenantId, item.id));
+      if (memItem) {
+        memItem.status = 'replayed';
+        memItem.replayedAt = new Date();
+        memItem.replayedExecutionId = stored.id;
+      }
+    }
+
+    io.to(`tenant:${req.tenantId}`).emit('dlq:item_replayed', { dlqId: item.id, executionId: stored.id });
+
+    res.status(201).json({
+      ok: true,
+      message: `DLQ item ${item.id} replayed successfully.`,
+      execution: stored
+    });
+  } catch(e) { next(e); }
+});
+
+app.delete('/api/dlq/:id', async (req, res, next) => {
+  try {
+    const deleted = await deleteDlq(req.tenantId, req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'DLQ item not found for this tenant.' });
+    }
+    io.to(`tenant:${req.tenantId}`).emit('dlq:item_deleted', { id: req.params.id });
+    res.status(204).end();
+  } catch(e) { next(e); }
+});
+
+// --- AUTHENTICATION ---
+const authLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 20,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many attempts. Please wait a minute and try again.' }
+});
+const DUMMY_HASH = hashPassword('not-a-real-password');
+
+app.post('/api/auth/register', authLimiter, async (req, res, next) => {
+  try {
+    const { errors, values } = validateRegistration(req.body);
+    if (Object.keys(errors).length) return res.status(400).json({ error: 'Please fix the highlighted fields.', fields: errors });
+    const [byEmail, byPhone] = await Promise.all([findUser({ email: values.email }), findUser({ phone: values.phone })]);
+    if (byEmail || byPhone) {
+      const fields = {};
+      if (byEmail) fields.email = 'An account with this email already exists.';
+      if (byPhone) fields.phone = 'An account with this phone number already exists.';
+      return res.status(409).json({ error: 'Account already exists. Sign in instead.', fields });
+    }
+    const user = await createUser(values);
+    res.status(201).json({ ok: true, user: publicUser(user) });
+  } catch (e) {
+    if (e?.code === 11000) return res.status(409).json({ error: 'Account already exists. Sign in instead.' });
+    next(e);
+  }
+});
+
+app.post('/api/auth/login', authLimiter, async (req, res, next) => {
+  try {
+    const method = req.body?.method === 'phone' ? 'phone' : 'email';
+    const identifier = String(req.body?.identifier || '').trim();
+    const password = String(req.body?.password || '');
+    const valid = method === 'phone' ? isValidPhone(identifier) : isValidEmail(identifier);
+    if (!valid) {
+      return res.status(400).json({
+        error: method === 'phone' ? 'Enter a 10-digit phone number, digits only.' : 'Enter a valid email address, like name@company.com.',
+        fields: { identifier: method === 'phone' ? 'Enter a 10-digit phone number, digits only.' : 'Enter a valid email address, like name@company.com.' }
+      });
+    }
+    if (!password) return res.status(400).json({ error: 'Enter your password.', fields: { password: 'Enter your password.' } });
+    const user = await findUser(method === 'phone' ? { phone: identifier } : { email: identifier.toLowerCase() });
+    // Always run a hash comparison so response time does not reveal whether the account exists
+    const ok = verifyPassword(password, user ? user.passwordHash : DUMMY_HASH);
+    if (!user || !ok) return res.status(401).json({ error: 'Incorrect email/phone or password.' });
+    await markLogin(user);
+    res.json({ ok: true, token: signToken(String(user._id || user.id)), user: publicUser(user) });
+  } catch (e) { next(e); }
+});
+
+app.get('/api/auth/me', async (req, res, next) => {
+  try {
+    const userId = verifyToken(req.header('x-session-token'));
+    const user = userId ? await findUser({ id: userId }) : null;
+    if (!user) return res.status(401).json({ error: 'Session expired. Please sign in again.' });
+    res.json({ user: publicUser(user) });
+  } catch (e) { next(e); }
+});
+
 app.get('/api/metrics', async (req, res, next) => {
   try {
     const [workflows, executions] = await Promise.all([
@@ -620,15 +978,19 @@ app.use((err, _req, res, _next) => {
   res.status(err.status || 500).json({ error: err.status ? err.message : 'Internal server error.' });
 });
 
-if (process.env.MONGODB_URI) {
+const isTestEnv = process.env.NODE_ENV === 'test' || process.argv.some(arg => arg.includes('test'));
+const isDirectRun = process.argv[1] && (process.argv[1].endsWith('server.js') || process.argv[1].endsWith('server'));
+if (process.env.MONGODB_URI && !isTestEnv && isDirectRun) {
   mongoose.connect(process.env.MONGODB_URI)
-    .then(() => { mongoReady = true; console.log('Connected to MongoDB.'); })
+    .then(async () => {
+      mongoReady = true;
+      console.log('Connected to MongoDB.');
+      await ensureDemoApiKeys().catch(err => console.error('Failed to sync demo API keys:', err.message));
+    })
     .catch(err => console.error('MongoDB unavailable; API will remain in demo memory mode:', err.message));
 }
-
-const isTestEnv = process.env.NODE_ENV === 'test' || process.argv.some(arg => arg.includes('test'));
-if (!isTestEnv) {
-  server.listen(PORT, () => console.log(`FlowPilot API listening on http://localhost:${PORT} (${process.env.MONGODB_URI ? 'MongoDB optional' : 'memory demo mode'})`));
+if (!isTestEnv && isDirectRun) {
+  server.listen(PORT, () => console.log(`Aegisflow API listening on http://localhost:${PORT} (${process.env.MONGODB_URI ? 'MongoDB optional' : 'memory demo mode'})`));
 }
 
 export { app, server };

@@ -49,8 +49,8 @@ export default function Layout() {
 
   useEffect(() => {
     const handleTenantChange = () => setTenant(getActiveTenantMeta());
-    window.addEventListener("flowpilot:tenant-changed", handleTenantChange);
-    return () => window.removeEventListener("flowpilot:tenant-changed", handleTenantChange);
+    window.addEventListener("aegisflow:tenant-changed", handleTenantChange);
+    return () => window.removeEventListener("aegisflow:tenant-changed", handleTenantChange);
   }, []);
 
   useEffect(() => {
@@ -83,7 +83,7 @@ export default function Layout() {
       <header className={`site-header ${scrolled ? "scrolled" : ""}`}>
         <div className="site-header-inner">
           <button className="mobile-menu icon-button" onClick={() => setMobileOpen(true)} aria-label="Open menu"><Menu size={22} /></button>
-          <Link to="/" className="logo"><span className="logo-mark"><Workflow size={20} /></span>FlowPilot</Link>
+          <Link to="/" className="logo"><span className="logo-mark"><Workflow size={20} /></span>Aegisflow</Link>
 
           <nav className="site-nav" aria-label="Main">
             {navItems.map(item => item.children ? (
@@ -163,14 +163,14 @@ export default function Layout() {
         <footer className="site-footer">
           <div className="footer-grid">
             <div className="footer-brand">
-              <Link to="/" className="logo"><span className="logo-mark"><Workflow size={20} /></span>FlowPilot</Link>
+              <Link to="/" className="logo"><span className="logo-mark"><Workflow size={20} /></span>Aegisflow</Link>
               <p>Multi-tenant distributed workflow and Saga orchestration. Innovated for industry leaders.</p>
             </div>
             <div><h5>Platform</h5><Link to="/dashboard">Dashboard</Link><Link to="/workflows">Workflows</Link><Link to="/workflows/new">Workflow builder</Link><Link to="/executions">Executions</Link></div>
             <div><h5>Operations</h5><Link to="/failures">Failures & Retries</Link><Link to="/integrations">Integrations</Link><Link to="/organization">Organization</Link></div>
             <div><h5>Resources</h5><Link to="/settings">Settings</Link><Link to="/admin">Admin Monitoring</Link><Link to="/#faq">FAQs</Link></div>
           </div>
-          <div className="footer-bottom"><span>FlowPilot {new Date().getFullYear()}. All Rights Reserved</span><span>Workspace: {tenant.name} ({tenant.id})</span></div>
+          <div className="footer-bottom"><span>Aegisflow {new Date().getFullYear()}. All Rights Reserved</span><span>Workspace: {tenant.name} ({tenant.id})</span></div>
         </footer>
       </div>
 

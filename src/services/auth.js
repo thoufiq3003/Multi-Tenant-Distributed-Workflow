@@ -1,8 +1,8 @@
 import { setActiveTenant } from './api';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '/api';
-const TOKEN_KEY = 'flowpilot.token';
-const USER_KEY = 'flowpilot.user';
+const TOKEN_KEY = 'aegisflow.token';
+const USER_KEY = 'aegisflow.user';
 
 // Same rules as backend/src/auth.js
 export const EMAIL_REGEX = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$/;

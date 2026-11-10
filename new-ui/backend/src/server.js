@@ -301,7 +301,7 @@ export async function findApiKeyByHash(tenantId, hash) {
 
 app.get('/api/health', (_req, res) => res.json({
   ok: true,
-  service: 'flowpilot-api',
+  service: 'aegisflow-api',
   database: mongoReady ? 'mongodb' : 'memory-demo',
   time: new Date().toISOString()
 }));
@@ -539,7 +539,7 @@ if (process.env.MONGODB_URI) {
 
 const isTestEnv = process.env.NODE_ENV === 'test' || process.argv.some(arg => arg.includes('test'));
 if (!isTestEnv) {
-  server.listen(PORT, () => console.log(`FlowPilot API listening on http://localhost:${PORT} (${process.env.MONGODB_URI ? 'MongoDB optional' : 'memory demo mode'})`));
+  server.listen(PORT, () => console.log(`Aegisflow API listening on http://localhost:${PORT} (${process.env.MONGODB_URI ? 'MongoDB optional' : 'memory demo mode'})`));
 }
 
 export { app, server };

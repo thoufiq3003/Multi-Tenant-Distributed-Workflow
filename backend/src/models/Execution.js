@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 const executionSchema = new mongoose.Schema({
+  id: { type: String, index: true },
   tenantId: { type: String, required: true, index: true },
   workflowId: { type: String, required: true, index: true },
   workflowName: { type: String, default: '' },

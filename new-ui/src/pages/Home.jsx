@@ -148,7 +148,7 @@ export default function Home() {
         <div className="home-wrap">
           <div className="mv-grid">
             <div>
-              <div className="home-eyebrow">About FlowPilot</div>
+              <div className="home-eyebrow">About Aegisflow</div>
               <h2>Committed to reliability, always evolving.</h2>
               <p className="home-lead">Dependable automation is our promise. Anything that doesn't meet the standard is retried, compensated and refined until it does.</p>
             </div>
@@ -203,7 +203,7 @@ export default function Home() {
       {/* FAQ */}
       <section id="faq" style={{ background: "#fff" }}>
         <div className="home-wrap faq-grid">
-          <div><div className="home-eyebrow">FAQ</div><h2>Frequently asked questions</h2><p className="home-lead">Quick answers about how FlowPilot works.</p></div>
+          <div><div className="home-eyebrow">FAQ</div><h2>Frequently asked questions</h2><p className="home-lead">Quick answers about how Aegisflow works.</p></div>
           <div className="faq-list">{faqs.map(([q, a]) => <details className="faq-item" key={q}><summary>{q}</summary><p>{a}</p></details>)}</div>
         </div>
       </section>

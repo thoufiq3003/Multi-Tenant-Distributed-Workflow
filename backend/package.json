@@ -1,11 +1,12 @@
 {
-  "name": "flowpilot-workflow-backend",
+  "name": "aegisflow-workflow-backend",
   "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
+    "seed": "node src/seed.js",
     "check": "node --check src/server.js && node --check src/workflow-engine.js",
     "test": "node --test"
   },
@@ -14,7 +15,7 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",
-    "flowpilot-react-frontend": "file:..",
+    "aegisflow-react-frontend": "file:..",
     "helmet": "^8.0.0",
     "mongoose": "^8.9.5",
     "socket.io": "^4.8.1"

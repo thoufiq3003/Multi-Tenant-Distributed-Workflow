@@ -17,7 +17,7 @@ export function emitChangeEvent(document, operationType = 'insert') {
     operationType,
     clusterTime: new Date().toISOString(),
     wallTime: new Date().toISOString(),
-    ns: { db: 'flowpilot', coll: 'events' },
+    ns: { db: 'aegisflow', coll: 'events' },
     documentKey: { _id: document.id || document._id },
     fullDocument: { ...document }
   };

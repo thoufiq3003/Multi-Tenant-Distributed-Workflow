@@ -50,3 +50,8 @@
 .signout-btn{display:inline-flex;align-items:center;gap:7px;height:42px;padding:0 14px;border:1px solid #cdd6cf;background:#fff;border-radius:var(--pill);font-size:14px;font-weight:600;color:var(--ink);cursor:pointer}
 .signout-btn:hover{background:var(--brand-soft);border-color:#b9d8c4;color:var(--brand)}
 @media(max-width:1100px){.signout-btn span{display:none}.signout-btn{padding:0 12px}}
+
+/* Login button in the app header for public visitors */
+.login-nav-btn{display:inline-flex;align-items:center;gap:7px;height:42px;padding:0 18px;background:var(--brand);color:#fff!important;border:1px solid var(--brand);border-radius:var(--pill);font-size:14px;font-weight:600;text-decoration:none;cursor:pointer;transition:all .15s ease}
+.login-nav-btn:hover{background:var(--brand-dark);border-color:var(--brand-dark);color:#fff!important;box-shadow:0 2px 8px rgba(19,99,63,0.25)}
+@media(max-width:1100px){.login-nav-btn{padding:0 12px}}

@@ -1,4 +1,4 @@
-# FlowPilot — Multi-Tenant Distributed Workflow & Saga Orchestration Engine
+# Aegisflow — Multi-Tenant Distributed Workflow & Saga Orchestration Engine
 
 [![Node.js](https://img.shields.io/badge/Node.js-20+-68a063.svg?style=flat-square&logo=node.js)](https://nodejs.org/)
 [![React](https://img.shields.io/badge/React-18-61dafb.svg?style=flat-square&logo=react)](https://react.dev/)
@@ -7,7 +7,7 @@
 [![Socket.IO](https://img.shields.io/badge/Socket.IO-4.8-010101.svg?style=flat-square&logo=socket.io)](https://socket.io/)
 [![Tests](https://img.shields.io/badge/Tests-17%2F17%20Passing-brightgreen.svg?style=flat-square)](backend/test/)
 
-**FlowPilot** is a resilient, multi-tenant distributed workflow and Saga orchestration engine designed for mission-critical enterprise automation. It combines a visual Directed Acyclic Graph (DAG) builder with an asynchronous execution state machine, real HTTP dispatching, dynamic condition branching, distributed Saga compensation rollback, real-time WebSocket progress streaming, and a reactive MongoDB Change Stream trigger engine.
+**Aegisflow** is a resilient, multi-tenant distributed workflow and Saga orchestration engine designed for mission-critical enterprise automation. It combines a visual Directed Acyclic Graph (DAG) builder with an asynchronous execution state machine, real HTTP dispatching, dynamic condition branching, distributed Saga compensation rollback, real-time WebSocket progress streaming, and a reactive MongoDB Change Stream trigger engine.
 
 ---
 
@@ -37,7 +37,7 @@
 - **Dynamic Condition Branching:** Evaluates dynamic condition rules (`==`, `!=`, `>`, `<`, `contains`) against workflow context and prior step responses to route execution paths.
 
 ### 5. Saga Distributed Compensation Rollback
-- **Distributed Consistency:** When a downstream step encounters an unrecoverable failure, FlowPilot executes compensating actions to reverse previously completed steps.
+- **Distributed Consistency:** When a downstream step encounters an unrecoverable failure, Aegisflow executes compensating actions to reverse previously completed steps.
 - **Strict Reverse Order (LIFO):** Compensations run in exact inverse order of completion to prevent data anomalies and orphan charges.
 - **Granular Compensation Status:** Distinguishes between successful rollback (`Compensated`) and partial rollback failure (`CompensationFailed`).
 
@@ -73,7 +73,7 @@ flowchart TD
         AuthMid["Cryptographic API Key Auth (SHA-256)"]
     end
 
-    subgraph CoreEngine ["FlowPilot Backend Core"]
+    subgraph CoreEngine ["Aegisflow Backend Core"]
         API["REST API Layer (/api/*)"]
         SocketServer["Socket.IO Server (Tenant Rooms)"]
         Engine["Workflow Execution Engine (Topological Sort)"]
