@@ -5,7 +5,8 @@
 [![Vite](https://img.shields.io/badge/Vite-5+-646cff.svg?style=flat-square&logo=vite)](https://vitejs.dev/)
 [![Express](https://img.shields.io/badge/Express-4.21-black.svg?style=flat-square&logo=express)](https://expressjs.com/)
 [![Socket.IO](https://img.shields.io/badge/Socket.IO-4.8-010101.svg?style=flat-square&logo=socket.io)](https://socket.io/)
-[![Tests](https://img.shields.io/badge/Tests-17%2F17%20Passing-brightgreen.svg?style=flat-square)](backend/test/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ed.svg?style=flat-square&logo=docker)](docker-compose.yml)
+[![Tests](https://img.shields.io/badge/Tests-28%2F28%20Passing-brightgreen.svg?style=flat-square)](backend/test/)
 
 **Aegisflow** is a resilient, multi-tenant distributed workflow and Saga orchestration engine designed for mission-critical enterprise automation. It combines a visual Directed Acyclic Graph (DAG) builder with an asynchronous execution state machine, real HTTP dispatching, dynamic condition branching, distributed Saga compensation rollback, real-time WebSocket progress streaming, and a reactive MongoDB Change Stream trigger engine.
 
@@ -209,7 +210,7 @@ For immediate evaluation, the application includes pre-seeded demo API keys for 
 
 The project includes an automated test suite executed via the native Node.js test runner (`node --test`).
 
-Run all 17 backend unit tests:
+Run all 28 backend unit tests:
 ```bash
 npm test --prefix backend
 ```
@@ -217,31 +218,69 @@ npm test --prefix backend
 ### Test Coverage Highlights
 ```
 TAP version 13
-ok 1 - emitChangeEvent produces official MongoDB Change Stream payload structure
-ok 2 - Change Stream reactively triggers matching workflow upon event insert
-ok 3 - Change Stream does not trigger workflows of a different tenant
-ok 4 - hashApiKey generates deterministic SHA-256 hash
-ok 5 - createApiKey persists hashed key and returns plaintext key once
-ok 6 - cross-tenant API key isolation: key from Tenant A cannot authenticate Tenant B
-ok 7 - revoking API key prevents further authentication
-ok 8 - multi-tenant workflow data isolation: tenant records remain separate
-ok 9 - seeded default demo key validates for demo-tenant
-ok 10 - valid DAG passes validation
-ok 11 - cycle is detected
-ok 12 - unreachable node is reported
-ok 13 - executor follows configured branch and completes
-ok 14 - executor retries simulated failure then fails
-ok 15 - Saga rollback compensates completed compensatable steps in reverse order
-ok 16 - execution reports compensation failure distinctly
-ok 17 - executeWorkflow dispatches real HTTP call, records output, and streams progress
-1..17
-# tests 17 | pass 17 | fail 0
+ok 1 - phone must be exactly 10 digits
+ok 2 - email regex accepts proper emails only
+ok 3 - registration validation reports each bad field
+ok 4 - password hashing and tokens
+ok 5 - createUser and findUser persist and retrieve user accounts
+ok 6 - emitChangeEvent produces official MongoDB Change Stream payload structure
+ok 7 - Change Stream reactively triggers matching workflow upon event insert
+ok 8 - Change Stream does not trigger workflows of a different tenant
+ok 9 - executeSandboxedScript transforms input payload safely
+ok 10 - executeSandboxedScript terminates infinite loops cleanly via timeout
+ok 11 - executeSandboxedScript restricts dangerous globals (process, require, fs)
+ok 12 - workflow-engine executes transform node through isolated sandbox
+ok 13 - Dead-Letter Queue (DLQ) captures failed executions
+ok 14 - multi-tenant DLQ data isolation: Tenant A cannot see Tenant B DLQ
+ok 15 - hashApiKey generates deterministic SHA-256 hash
+ok 16 - createApiKey persists hashed key and returns plaintext key once
+ok 17 - cross-tenant API key isolation: key from Tenant A cannot authenticate Tenant B
+ok 18 - revoking API key prevents further authentication
+ok 19 - multi-tenant workflow data isolation: tenant records remain separate
+ok 20 - seeded default demo key validates for demo-tenant
+ok 21 - valid DAG passes validation
+ok 22 - cycle is detected
+ok 23 - unreachable node is reported
+ok 24 - executor follows configured branch and completes
+ok 25 - executor retries simulated failure then fails
+ok 26 - Saga rollback compensates completed compensatable steps in reverse order
+ok 27 - execution reports compensation failure distinctly
+ok 28 - executeWorkflow dispatches real HTTP call, records output, and streams progress
+1..28
+# tests 28 | pass 28 | fail 0
 ```
 
 Verify frontend production build:
 ```bash
 npm run build
 ```
+
+---
+
+## 🐳 Docker Containerization & Cloud Deployment
+
+Aegisflow is fully containerized with multi-stage production builds and single-command orchestration.
+
+### Quick Start with Docker Compose
+To build and launch the complete stack (MongoDB, Backend Orchestrator, and Nginx React Frontend):
+
+```bash
+docker compose up --build
+```
+
+### Services Architecture
+| Service | Container Name | Port | Description |
+|---|---|---|---|
+| **Frontend** | `aegisflow-frontend` | `80`, `5173` | Production Nginx server with SPA fallback and API reverse proxy |
+| **Backend** | `aegisflow-backend` | `4000` | Node.js Saga engine, WebSocket server, and Change Stream worker |
+| **MongoDB** | `aegisflow-mongodb` | `27017` | Persistent document database with replica set & health check |
+
+### Cloud Auto-Scaling & Kubernetes Architecture
+For production cloud deployment (AWS ECS / EKS / GCP GKE):
+- **Stateless Backend Nodes:** Backend pods can be horizontally scaled (`HorizontalPodAutoscaler` based on CPU/RAM or queue depth).
+- **Socket.IO Redis Adapter:** When scaling backend pods across nodes, configure `@socket.io/redis-adapter` to distribute WebSocket events across instances.
+- **Worker Thread Sandboxing:** Each pod executes transformation scripts inside bounded `node:vm` sandboxes with strict CPU timeouts (500ms max) and memory restrictions.
+- **MongoDB Atlas Connection:** Override `MONGODB_URI` in container environment variables to target cloud-managed clusters.
 
 ---
 

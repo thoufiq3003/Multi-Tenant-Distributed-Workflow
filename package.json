@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "stress-test": "node stress-test.js",
     "dev:full": "concurrently -k -n API,WEB -c blue,green \"npm run dev --prefix backend\" \"vite\""
   },
   "dependencies": {

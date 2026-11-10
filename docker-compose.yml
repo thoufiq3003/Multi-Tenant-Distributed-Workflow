@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  # ==========================================
+  # 1. MongoDB Database Replica Service
+  # ==========================================
+  mongo:
+    image: mongo:7.0
+    container_name: aegisflow-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: aegisflow
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - aegisflow-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ==========================================
+  # 2. Aegisflow Workflow Backend Orchestrator
+  # ==========================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: aegisflow-backend
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      - PORT=4000
+      - CLIENT_ORIGIN=http://localhost:5173,http://localhost:80,http://localhost
+      - MONGODB_URI=mongodb://mongo:27017/aegisflow
+      - API_KEY_PEPPER=flowpilot-secret-pepper-2026
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - aegisflow-net
+
+  # ==========================================
+  # 3. Aegisflow React Frontend & Nginx Proxy
+  # ==========================================
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aegisflow-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "5173:80"
+    depends_on:
+      - backend
+    networks:
+      - aegisflow-net
+
+volumes:
+  mongo-data:
+    driver: local
+
+networks:
+  aegisflow-net:
+    driver: bridge
+
