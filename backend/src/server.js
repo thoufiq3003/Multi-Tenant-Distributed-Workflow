@@ -1001,3 +1001,20 @@ if (!isTestEnv && isDirectRun) {
 
 export { app, server };
 
+// Graceful shutdown handling for container orchestration (Docker SIGTERM/SIGINT)
+const handleShutdown = (signal) => {
+  console.log(`Received ${signal}. Shutting down Aegisflow API gracefully...`);
+  server.close(() => {
+    if (mongoose.connection.readyState === 1) {
+      mongoose.connection.close(false).then(() => {
+        console.log('MongoDB connection closed.');
+        process.exit(0);
+      });
+    } else {
+      process.exit(0);
+    }
+  });
+};
+
+process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+process.on('SIGINT', () => handleShutdown('SIGINT'));
