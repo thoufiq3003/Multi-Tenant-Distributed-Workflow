@@ -4,57 +4,71 @@
 [![React](https://img.shields.io/badge/React-18-61dafb.svg?style=flat-square&logo=react)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-5+-646cff.svg?style=flat-square&logo=vite)](https://vitejs.dev/)
 [![Express](https://img.shields.io/badge/Express-4.21-black.svg?style=flat-square&logo=express)](https://expressjs.com/)
+[![MongoDB](https://img.shields.io/badge/MongoDB-Atlas%20%7C%20Local-47A248.svg?style=flat-square&logo=mongodb)](https://www.mongodb.com/)
 [![Socket.IO](https://img.shields.io/badge/Socket.IO-4.8-010101.svg?style=flat-square&logo=socket.io)](https://socket.io/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ed.svg?style=flat-square&logo=docker)](docker-compose.yml)
 [![Tests](https://img.shields.io/badge/Tests-28%2F28%20Passing-brightgreen.svg?style=flat-square)](backend/test/)
+[![Stress Test](https://img.shields.io/badge/Stress%20Test-2%2C500%2B%20req%2Fsec-blueviolet.svg?style=flat-square)](stress-test.js)
 
-**Aegisflow** is a resilient, multi-tenant distributed workflow and Saga orchestration engine designed for mission-critical enterprise automation. It combines a visual Directed Acyclic Graph (DAG) builder with an asynchronous execution state machine, real HTTP dispatching, dynamic condition branching, distributed Saga compensation rollback, real-time WebSocket progress streaming, and a reactive MongoDB Change Stream trigger engine.
+**Aegisflow** is a resilient, multi-tenant distributed workflow automation and Saga orchestration platform designed to mirror enterprise orchestrators such as **Temporal** and **Zapier**. Built for mission-critical automation, it integrates a visual Directed Acyclic Graph (DAG) builder, an asynchronous execution state machine, distributed Saga compensation rollbacks, isolated JavaScript execution sandboxes, real-time WebSocket progress streaming, automated Dead-Letter Queue (DLQ) failure handling, and a reactive MongoDB Change Stream trigger engine.
 
 ---
 
 ## 🌟 Key Features & Architectural Highlights
 
-### 1. Multi-Tenant Isolation & Workspace Management
-- **Tenant Context Routing:** Strict isolation via the `x-tenant-id` request header. Workflows, executions, and keys are partitioned per tenant.
-- **Interactive Workspace Switcher:** Switch seamlessly between enterprise workspaces (*Acme Ltd.*, *Globex Corp.*, *Stark Industries*, or custom tenants) directly in the navigation UI.
-- **Tenant-Scoped Rate Limiting:** High-frequency protection enforcing a sliding window of **180 requests/minute per tenant** rather than a blunt global IP limit.
+### 1. Multi-Tenant Isolation & Workspace Partitioning
+- **Strict Tenant Context Routing:** Every request requires an `x-tenant-id` header (e.g. `demo-tenant`, `globex-corp`, `stark-tech`, or custom workspace slugs).
+- **Interactive Tenant Switcher:** Switch between enterprise workspaces (*Acme Ltd.*, *Globex Corp.*, *Stark Industries*) directly from the top navigation bar.
+- **Tenant-Scoped Rate Limiting:** Enforces a sliding 60-second window rate limit of **180 requests/minute per tenant**, preventing cross-tenant noisy neighbor impact.
+- **Data Isolation:** Workflows, execution histories, DLQ entries, and API keys are strictly partitioned at both the database and cache layers.
 
-### 2. Cryptographic API Key Security
-- **One-Way Hashing:** High-entropy API keys (`fp_...`) are cryptographically hashed at rest using **SHA-256 with a server-side pepper**.
-- **Least-Privilege Exposure:** Plaintext keys are presented to users **only once** upon creation.
-- **Active 401 Enforcement:** Requests with missing, expired, revoked, or cross-tenant API keys are strictly rejected with HTTP `401 Unauthorized`.
-- **Self-Healing Client:** Frontend API layer automatically catches stale keys from past sessions, clears them from `localStorage`, and recovers without user interruption.
+### 2. Public Visitor Experience & Authentication Guard
+- **Public Showcase Interface:** Unauthenticated visitors landing on `http://localhost:5173/` view an interactive presentation of Aegisflow's architecture, benchmark throughput, and template cards without leaking private tenant metrics or backend database data.
+- **Protected Workspace Access:** All private operations (`/dashboard`, `/workflows`, `/executions`, `/admin`, `/organization`) are safeguarded by session authentication and signed token verification.
+- **User Authentication:** Built-in registration and login supporting email and phone numbers, salted scrypt password hashing, and signed HMAC-SHA256 session tokens.
 
-### 3. Visual DAG Builder & Structural Validation
-- **React Flow Canvas:** Interactive drag-and-drop workflow builder supporting triggers, actions, conditionals, and compensation nodes.
-- **Topological DAG Validation:** Backend graph analysis validates graphs before execution:
-  - Detects infinite cycles and recursive loops via Depth-First Search (DFS).
-  - Flags orphaned or unreachable nodes disconnected from triggers.
-  - Validates missing or duplicate step identifiers.
+### 3. Visual DAG Canvas & Topological Graph Validation
+- **Interactive Canvas (@xyflow/react):** Drag-and-drop workflow canvas supporting Triggers (Webhooks/Events), Actions (HTTP dispatch, inventory, email), Conditions (dynamic branching), Transforms (sandboxed JS), and Saga Compensations.
+- **Topological DAG Validation:** Depth-First Search (DFS) backend validation detects circular dependencies, infinite loops, missing targets, and orphaned or disconnected nodes prior to saving.
 
-### 4. Resilient Execution Engine
-- **Real External HTTP Dispatch:** Executes real HTTP/REST API calls using native `fetch()` with custom HTTP methods (`GET`, `POST`, `PUT`, `DELETE`), headers, payloads, and request timeouts (`AbortSignal.timeout`).
-- **Configurable Retries & Backoff:** Transient network and HTTP errors automatically trigger bounded retries with exponential backoff.
-- **Dynamic Condition Branching:** Evaluates dynamic condition rules (`==`, `!=`, `>`, `<`, `contains`) against workflow context and prior step responses to route execution paths.
+### 4. Distributed Saga Compensation Rollback (LIFO)
+- **Automatic Failure Recovery:** When a downstream step encounters an unrecoverable failure (or exhausts retries), the Saga coordinator automatically reverses completed compensatable steps.
+- **Strict Reverse Order (LIFO):** Compensations execute in exact inverse order of completion to avoid distributed data inconsistency (e.g. reversing warehouse stock reservations if payment authorization fails).
+- **Granular Compensation Status:** Clear visual distinction between successful rollbacks (`Compensated`) and partial rollback failures (`Compensation Failed`).
 
-### 5. Saga Distributed Compensation Rollback
-- **Distributed Consistency:** When a downstream step encounters an unrecoverable failure, Aegisflow executes compensating actions to reverse previously completed steps.
-- **Strict Reverse Order (LIFO):** Compensations run in exact inverse order of completion to prevent data anomalies and orphan charges.
-- **Granular Compensation Status:** Distinguishes between successful rollback (`Compensated`) and partial rollback failure (`CompensationFailed`).
+### 5. Isolated JavaScript Transform Sandbox
+- **Secure VM Isolation (`node:vm`):** Executes custom user data transformation scripts inside isolated execution contexts with strict CPU timeouts (**500ms max**) and memory constraints.
+- **Sandbox Hardening:** Strips dangerous host globals (`process`, `require`, `fs`, `eval`, `child_process`) to prevent host environment tampering while allowing clean JSON input/output transformations.
 
-### 6. Real-Time WebSocket Execution Monitoring
-- **Socket.IO Streaming:** Live execution events stream directly from the engine to the browser over tenant-scoped rooms (`tenant:<id>`).
-- **Visual Canvas Pulse:** Canvas nodes glow and animate in real time:
-  - 🔵 **Blue Pulse:** Step running
+### 6. Bidirectional WebSocket Execution Streaming
+- **Real-Time Step Tracing:** Socket.IO engine streams live execution events directly to the browser across tenant-isolated rooms (`tenant:<id>`).
+- **Visual Pulse Nodes:** Canvas nodes illuminate and animate dynamically during runs:
+  - 🔵 **Blue Pulse:** Step currently running
   - 🟢 **Green:** Step completed successfully
   - 🔴 **Red:** Step failed
-  - 🟠 **Orange Pulse:** Saga compensation rollback in progress
+  - 🟠 **Orange Pulse:** Saga rollback in progress
   - 🟣 **Purple:** Step compensated
 
-### 7. MongoDB Change Stream Reactive Trigger Engine
-- **Event-Driven Architecture:** Ingests document mutation events and reactively triggers matching active workflows without manual intervention.
-- **Official Specification Payload:** Emits and parses official MongoDB Change Stream format including `_id._data` resume tokens, `operationType: 'insert'`, `clusterTime`, `wallTime`, `ns`, `documentKey`, and `fullDocument`.
-- **Offline Adapter Mode:** Operates 100% offline via the Change Stream Adapter pattern, and seamlessly connects to a live MongoDB Replica Set (`collection.watch()`) when configured.
+### 7. Dead-Letter Queue (DLQ) & Replay Engine
+- **Automatic DLQ Routing:** Failed executions and exhausted retries are automatically routed to the Dead-Letter Queue collection.
+- **DLQ Management Portal (`/failures`):** Inspect failed payload contexts, downstream error stacks, and retry counts, with one-click execution replay capabilities.
+
+### 8. Reactive MongoDB Change Stream Trigger
+- **Event-Driven Architecture:** Ingests document mutation events and reactively triggers matching active workflows in sub-milliseconds.
+- **Standard Specification Payload:** Formats events following official MongoDB Change Stream specs (`_id._data` resume tokens, `operationType: 'insert'`, `clusterTime`, `wallTime`, `documentKey`, and `fullDocument`).
+- **Hybrid Operation:** Supports live MongoDB replica set streaming (`collection.watch()`) and in-memory event adapter fallback.
+
+### 9. Administrative Operations Dashboard (`/admin`)
+- **Tenant Quotas:** Live progress monitors displaying per-tenant request consumption against the 180 req/min rate limit.
+- **Worker Latency Charts:** Real-time line charts tracking average and p95 run duration across hourly buckets.
+- **Failure Heatmap:** Interactive matrix highlighting failure frequencies grouped by workflow step and time.
+
+### 10. Enterprise Dataset (50 Workflows & 168 Execution Traces)
+- **Pre-Seeded Workflows:** 50 realistic enterprise workflows across 3 tenants:
+  - **25 for Acme Ltd. (`demo-tenant`):** E-Commerce fulfillment, dunning, instant refund dispatch, fraud score branching, subscription recurring billing.
+  - **15 for Globex Corp. (`globex-corp`):** Global ocean freight manifests, AML sanctions screening, FX currency hedging, cold-chain IoT temperature breach compensations.
+  - **10 for Stark Industries (`stark-tech`):** Automated blue/green canary deployments, distributed LLM fine-tuning pipelines, zero-day auto-patching rollouts, telemetry ingestion.
+- **168 Execution Records:** Rich execution histories containing real step logs, timings, and Saga rollbacks across MongoDB Atlas and the in-memory fallback store.
 
 ---
 
@@ -63,45 +77,63 @@
 ```mermaid
 flowchart TD
     subgraph Browser ["Frontend (React 18 + React Flow + Vite)"]
-        UI["UI Pages (Workflows, Executions, Org)"]
+        Landing["Public Landing Page (Home.jsx)"]
+        AuthUI["Login & Register Forms"]
+        DashboardUI["Protected Dashboard & Workflows"]
         Canvas["React Flow Visual DAG Canvas"]
+        AdminUI["Admin Operations (Quotas / Heatmap)"]
+        DLQUI["DLQ & Failure Management"]
         SocketClient["Socket.IO Client"]
     end
 
-    subgraph SecurityPipeline ["Express Middleware Pipeline"]
+    subgraph SecurityPipeline ["Security & Tenant Routing Pipeline"]
         TenantMid["Tenant Context Router (x-tenant-id)"]
         RateLimit["Per-Tenant Rate Limiter (180 req/min)"]
-        AuthMid["Cryptographic API Key Auth (SHA-256)"]
+        AuthMid["Cryptographic API Key & Session Token Auth"]
     end
 
     subgraph CoreEngine ["Aegisflow Backend Core"]
         API["REST API Layer (/api/*)"]
         SocketServer["Socket.IO Server (Tenant Rooms)"]
-        Engine["Workflow Execution Engine (Topological Sort)"]
-        Saga["Saga Compensation Coordinator (LIFO Rollback)"]
+        Engine["Workflow Execution State Machine"]
+        Saga["Saga Compensation Coordinator (LIFO)"]
+        Sandbox["Isolated VM Sandbox (node:vm)"]
+        DLQ["Dead-Letter Queue Subsystem"]
         CSEngine["MongoDB Change Stream Engine"]
     end
 
-    subgraph StorageExternal ["Persistence & Integrations"]
-        Storage["In-Memory Store (Active) / MongoDB Mongoose"]
+    subgraph Persistence ["Persistence & Integrations"]
+        MongoDB[("MongoDB Atlas / Local Replica Set")]
+        MemoryStore[("In-Memory Store (Zero-Config Fallback)")]
         ExternalAPIs["External HTTP Endpoints (Stripe, S3, Webhooks)"]
     end
 
-    UI -->|HTTP Requests + Headers| TenantMid
+    Landing --> AuthUI
+    AuthUI -->|Sign In / Register| SecurityPipeline
+    DashboardUI --> SecurityPipeline
+    Canvas --> SecurityPipeline
+    AdminUI --> SecurityPipeline
+    DLQUI --> SecurityPipeline
+
+    SecurityPipeline --> TenantMid
     TenantMid --> RateLimit
     RateLimit --> AuthMid
     AuthMid --> API
 
     API --> Engine
+    Engine --> Sandbox
     Engine --> ExternalAPIs
     Engine -->|Step Failure| Saga
-    Saga -->|Compensate| ExternalAPIs
-    Engine -->|Step Progress Events| SocketServer
-    SocketServer -->|Live WebSocket Stream| SocketClient
-    SocketClient -->|Update Node Glow & Status| Canvas
+    Saga -->|LIFO Compensate| ExternalAPIs
+    Engine -->|Exhausted Failure| DLQ
+    DLQ --> MongoDB
+    Engine -->|Live Trace Progress| SocketServer
+    SocketServer -->|WebSocket Stream| SocketClient
+    SocketClient -->|Live Pulse Glow| Canvas
 
-    API -->|Insert Event Document| Storage
-    Storage -->|Change Event| CSEngine
+    API --> MongoDB
+    API -.-> MemoryStore
+    MongoDB -->|Change Event Watch| CSEngine
     CSEngine -->|Reactive Trigger| Engine
 ```
 
@@ -109,43 +141,75 @@ flowchart TD
 
 ## 📂 Project Structure
 
-```
+```text
 Multi-Tenant-Distributed-Workflow/
 ├── backend/
 │   ├── src/
 │   │   ├── models/
 │   │   │   ├── ApiKey.js         # Mongoose schema for cryptographic API keys
-│   │   │   ├── Execution.js      # Execution run history schema
-│   │   │   └── Workflow.js       # Workflow DAG schema
+│   │   │   ├── Dlq.js            # Mongoose schema for Dead-Letter Queue records
+│   │   │   ├── Event.js          # Mongoose schema for Change Stream events
+│   │   │   ├── Execution.js      # Execution run history & step trace schema
+│   │   │   ├── User.js           # User credentials & organization role schema
+│   │   │   └── Workflow.js       # Workflow DAG & metadata schema
+│   │   ├── auth.js               # Scrypt password hashing & HMAC session tokens
 │   │   ├── change-stream.js      # MongoDB Change Stream reactive trigger engine
+│   │   ├── sandbox.js            # Isolated node:vm transformation script sandbox
+│   │   ├── seed-data.js          # 50 enterprise workflows & execution generator
+│   │   ├── seed.js               # Database seeding script for MongoDB Atlas
 │   │   ├── server.js             # Express API, Socket.IO server & security pipeline
 │   │   └── workflow-engine.js    # DAG traversal, HTTP dispatch, retries, Saga rollback
 │   ├── test/
-│   │   ├── change-stream.test.js # Unit tests for Change Stream engine
-│   │   ├── security-tenancy.test.js # Unit tests for tenant isolation & API keys
-│   │   └── workflow-engine.test.js  # Unit tests for DAG sort, HTTP, and Saga rollback
-│   └── package.json
+│   │   ├── auth.test.js          # Password hashing, validation, session token tests
+│   │   ├── change-stream.test.js # Change Stream reactive trigger unit tests
+│   │   ├── sandbox-dlq.test.js   # Isolated VM sandbox & DLQ isolation tests
+│   │   ├── security-tenancy.test.js # Multi-tenant isolation & API key tests
+│   │   └── workflow-engine.test.js  # DAG DFS sort, branching, HTTP, Saga rollback tests
+│   ├── .dockerignore             # Backend Docker build exclusion rules
+│   ├── .env.example              # Environment variables template
+│   ├── Dockerfile                # Production Node.js 20 Alpine backend container
+│   └── package.json              # Backend dependencies and test scripts
 ├── src/
 │   ├── components/
-│   │   ├── Layout.jsx            # Shell with interactive workspace switcher
-│   │   └── UI.jsx                # Reusable UI atoms (Buttons, Badges, Headers)
+│   │   ├── Layout.jsx            # Shell with workspace switcher & public navigation
+│   │   ├── Motion.jsx            # Dynamic reveal and SVG flow animations
+│   │   └── UI.jsx                # Reusable design atoms (Buttons, Badges, Headers)
 │   ├── pages/
-│   │   ├── Dashboard.jsx         # System overview & execution statistics
-│   │   ├── ExecutionDetails.jsx  # Live timeline, step logs & replay
-│   │   ├── Executions.jsx        # Execution run history & export
-│   │   ├── Integrations.jsx      # External service connectors
-│   │   ├── Organization.jsx      # API key generation & revocation UI
+│   │   ├── Admin.jsx             # Admin operations: tenant quotas, heatmap, latency
+│   │   ├── Dashboard.jsx         # Live workspace metrics & activity charts
+│   │   ├── ExecutionDetails.jsx  # Interactive step-by-step trace timeline & logs
+│   │   ├── Executions.jsx        # Run history table, status filter & JSON export
+│   │   ├── Failures.jsx          # Dead-Letter Queue (DLQ) inspection & replay
+│   │   ├── Home.jsx              # Public landing page with benchmark showcase
+│   │   ├── Integrations.jsx      # External connectors & webhook configurations
+│   │   ├── Login.jsx             # User login portal (email / phone number)
+│   │   ├── Organization.jsx      # API key generation & revocation management
+│   │   ├── Register.jsx          # Account registration & organization onboarding
+│   │   ├── Settings.jsx          # Tenant settings & preferences
 │   │   ├── WorkflowBuilder.jsx   # Visual React Flow DAG canvas with live pulse
-│   │   └── Workflows.jsx         # Workflow catalog & lifecycle management
+│   │   ├── Workflows.jsx         # Workflow catalog, triggers & status toggles
+│   │   ├── admin.css             # Styling for Admin quota gauges and heatmap
+│   │   ├── auth.css              # Authentication form styles
+│   │   └── execution-trace.css   # Step trace timeline and log viewer styles
 │   ├── services/
-│   │   ├── api.js                # Resilient HTTP client with auto-recovery
+│   │   ├── api.js                # Resilient HTTP client with self-healing keys
+│   │   ├── auth.js               # Client session state & token management
 │   │   └── socket.js             # WebSocket manager for tenant rooms
-│   ├── styles.css                # Custom UI styling & glowing pulse animations
-│   └── main.jsx                  # Application entry point
-├── package.json                  # Root dependencies & scripts
-├── vite.config.js                # Vite configuration with API & WebSocket proxies
-├── PROJECT_HANDOVER.md           # Comprehensive technical handover & audit report
-└── README.md                     # You are here
+│   ├── anim.css                  # UI animation keyframes
+│   ├── App.jsx                   # React Router route definitions & auth guards
+│   ├── main.jsx                  # React application entry point
+│   ├── styles.css                # Base layout styles & component rules
+│   └── theme.css                 # Color tokens, typography & dark theme system
+├── .dockerignore                 # Root Docker build exclusion rules
+├── .gitignore                    # Git file exclusion rules
+├── docker-compose.yml            # Multi-container orchestration (Mongo, Backend, Frontend)
+├── Dockerfile                    # Multi-stage production build for React UI + Nginx
+├── index.html                    # Application HTML entry document
+├── nginx.conf                    # Production Nginx reverse proxy configuration
+├── package.json                  # Root dependencies and unified dev scripts
+├── REPORT.md                     # Official Distributed Workflow & Saga Orchestration Report
+├── stress-test.js                # 1,000+ concurrent distributed pipeline stress test
+└── vite.config.js                # Vite configuration with API & WebSocket proxies
 ```
 
 ---
@@ -155,6 +219,9 @@ Multi-Tenant-Distributed-Workflow/
 ### Prerequisites
 - **Node.js**: v20.0.0 or higher
 - **npm**: v10.0.0 or higher
+- *(Optional)* **Docker & Docker Compose** for containerized deployment
+
+---
 
 ### 1. Installation
 
@@ -169,12 +236,37 @@ cd Multi-Tenant-Distributed-Workflow
 npm install
 
 # Install backend dependencies
-cd backend
-npm install
-cd ..
+npm install --prefix backend
 ```
 
-### 2. Running Locally
+---
+
+### 2. Configuration (`backend/.env`)
+
+Create a `.env` file in the `backend/` directory (or copy `backend/.env.example`):
+
+```env
+PORT=4000
+CLIENT_ORIGIN=http://localhost:5173
+MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.nvl4bfv.mongodb.net/aegisflow?retryWrites=true&w=majority
+API_KEY_PEPPER=aegisflow-secret-pepper-2026
+```
+
+> **Note:** If `MONGODB_URI` is not provided or the database is temporarily unreachable, Aegisflow seamlessly runs in **in-memory demo mode**, populated with all 50 workflows, executions, and demo keys.
+
+---
+
+### 3. Database Seeding (Optional)
+
+To seed or refresh all **50 enterprise workflows**, **168 execution runs**, **6 DLQ records**, and the **demo user account** directly into your MongoDB Atlas cluster:
+
+```bash
+npm run seed --prefix backend
+```
+
+---
+
+### 4. Running Locally
 
 Start both the backend API (port 4000) and the Vite frontend (port 5173) concurrently with one command:
 
@@ -185,7 +277,7 @@ npm run dev:full
 - **Frontend Application:** [http://localhost:5173](http://localhost:5173)
 - **Backend Health Check:** [http://localhost:4000/api/health](http://localhost:4000/api/health)
 
-*(Optional)* You can also run them in separate terminal windows:
+*(Optional: Running in separate terminal windows)*
 ```bash
 # Terminal 1 (Backend)
 npm run dev --prefix backend
@@ -194,20 +286,30 @@ npm run dev --prefix backend
 npm run dev
 ```
 
-### 3. Pre-Seeded Demo Credentials
+---
 
-For immediate evaluation, the application includes pre-seeded demo API keys for default workspaces:
+### 5. Pre-Seeded Demo Credentials
 
-| Workspace | Tenant ID | Pre-Seeded API Key |
-|---|---|---|
-| **Acme Ltd.** | `demo-tenant` | `fp_demo_7f8a9b0c1d2e3f4a5b6c7d8e` |
-| **Globex Corp.** | `globex-corp` | `fp_globex_7f8a9b0c1d2e3f4a5b6c7d8e` |
-| **Stark Industries** | `stark-tech` | `fp_stark_7f8a9b0c1d2e3f4a5b6c7d8e` |
+#### Default User Login
+- **Email:** `demo@aegisflow.dev`
+- **Phone:** `9876543210`
+- **Password:** `Password123!`
+- **Role:** `Workflow admin` (Tenant: `demo-tenant` / Acme Ltd.)
+
+*(You can also register a new account on `/register`).*
+
+#### Pre-Seeded API Keys by Tenant
+| Workspace | Tenant ID | Description | Pre-Seeded API Key |
+|---|---|---|---|
+| **Acme Ltd.** | `demo-tenant` | E-Commerce, Billing, Subscriptions (25 Workflows) | `fp_demo_7f8a9b0c1d2e3f4a5b6c7d8e` |
+| **Globex Corp.** | `globex-corp` | Logistics, Ocean Freight, FX Hedging (15 Workflows) | `fp_globex_7f8a9b0c1d2e3f4a5b6c7d8e` |
+| **Stark Industries** | `stark-tech` | Cloud-Native, Canary K8s, LLM Tuning (10 Workflows) | `fp_stark_7f8a9b0c1d2e3f4a5b6c7d8e` |
 
 ---
 
 ## 🧪 Testing & Verification
 
+### Unit Test Suite
 The project includes an automated test suite executed via the native Node.js test runner (`node --test`).
 
 Run all 28 backend unit tests:
@@ -215,8 +317,8 @@ Run all 28 backend unit tests:
 npm test --prefix backend
 ```
 
-### Test Coverage Highlights
-```
+#### Test Coverage Summary
+```text
 TAP version 13
 ok 1 - phone must be exactly 10 digits
 ok 2 - email regex accepts proper emails only
@@ -250,7 +352,50 @@ ok 28 - executeWorkflow dispatches real HTTP call, records output, and streams p
 # tests 28 | pass 28 | fail 0
 ```
 
-Verify frontend production build:
+---
+
+### 1,000+ Concurrent Pipeline Stress Test
+Complies with the Zaalima Week 4 requirement for high-throughput orchestrator validation.
+
+Run the stress test:
+```bash
+npm run stress-test
+```
+
+#### Benchmark Results
+```text
+======================================================================
+  AEGISFLOW DISTRIBUTED ORCHESTRATOR — 1,000+ CONCURRENT STRESS TEST
+======================================================================
+ Target Pipelines   : 1,000
+ Concurrency Pool   : 100 concurrent in-flight workers
+ Multi-Tenant Pool  : demo-tenant, globex-corp, stark-tech, wayne-enterprises, cyberdyne-sys
+ Pipeline Scenarios : Straight-line, Branching, Saga Rollback, Sandboxed JS
+----------------------------------------------------------------------
+ Total Pipelines Run    : 1,000
+ Total Wall-Clock Time  : 0.40 seconds
+ System Throughput      : 2,528.06 pipelines/second
+----------------------------------------------------------------------
+ STATUS BREAKDOWN
+   ✓ Completed (Normal) : 750 (75.0%)
+   ⟲ Compensated (Saga) : 250 (25.0%)
+   ✖ Unhandled Failures : 0 (0.0%)
+----------------------------------------------------------------------
+ LATENCY DISTRIBUTION
+   Min Latency          : 0.03 ms
+   Average (Mean)       : 35.84 ms
+   Median (P50)         : 4.97 ms
+   P95 Latency          : 148.96 ms
+   Max Latency          : 152.06 ms
+----------------------------------------------------------------------
+ VERDICT: PASSED ☑ (Orchestrator sustained 1,000+ distributed pipelines)
+======================================================================
+```
+
+---
+
+### Frontend Build Verification
+Verify that the production Vite React build bundles cleanly without errors:
 ```bash
 npm run build
 ```
@@ -286,7 +431,14 @@ For production cloud deployment (AWS ECS / EKS / GCP GKE):
 
 ## 📡 API Reference Overview
 
-All data endpoints require the `x-tenant-id` header (defaults to `demo-tenant`) and validate the `x-api-key` header.
+All data endpoints require the `x-tenant-id` header (defaults to `demo-tenant`) and validate the `x-api-key` header or signed session token.
+
+### Authentication & Users
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/auth/register` | Register a new user account and organization |
+| `POST` | `/api/auth/login` | Authenticate using email or phone number and password |
+| `GET` | `/api/auth/me` | Retrieve authenticated user profile via session token |
 
 ### Workflows
 | Method | Endpoint | Description |
@@ -294,7 +446,7 @@ All data endpoints require the `x-tenant-id` header (defaults to `demo-tenant`) 
 | `GET` | `/api/workflows` | List all workflows for the active tenant |
 | `POST` | `/api/workflows` | Create a new workflow DAG |
 | `GET` | `/api/workflows/:id` | Retrieve workflow by ID |
-| `PUT` | `/api/workflows/:id` | Update an existing workflow |
+| `PUT` | `/api/workflows/:id` | Update an existing workflow DAG |
 | `DELETE` | `/api/workflows/:id` | Delete a workflow |
 | `POST` | `/api/workflows/validate` | Validate nodes and edges (cycles, orphans) |
 | `PATCH` | `/api/workflows/:id/status` | Update workflow status (`Active` / `Paused`) |
@@ -306,6 +458,20 @@ All data endpoints require the `x-tenant-id` header (defaults to `demo-tenant`) 
 | `GET` | `/api/executions/:id` | Get execution details and step logs |
 | `POST` | `/api/workflows/:id/execute` | Execute a workflow with optional payload |
 | `POST` | `/api/executions/:id/retry` | Re-run a previous execution |
+
+### Dead-Letter Queue (DLQ)
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/dlq` | List dead-letter queue records for the tenant |
+| `GET` | `/api/dlq/:id` | Get DLQ item details and payload |
+| `POST` | `/api/dlq/:id/replay` | Replay a failed DLQ execution |
+| `DELETE` | `/api/dlq/:id` | Dismiss/delete a DLQ item |
+
+### Admin Operations & Metrics
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/metrics` | Retrieve workspace stats (workflow count, completed, failed) |
+| `GET` | `/api/admin/overview` | Platform admin stats: tenant quotas, latency, failure heatmap |
 
 ### API Key Management
 | Method | Endpoint | Description |
@@ -326,22 +492,32 @@ All data endpoints require the `x-tenant-id` header (defaults to `demo-tenant`) 
 
 Follow these steps to demonstrate the engine's core capabilities:
 
-1. **Workspace Switching (Multi-Tenancy):**
+1. **Public Exploration (No Authentication Required):**
    - Open `http://localhost:5173`.
-   - Click the top-left workspace dropdown ("Acme Ltd.") and select **Globex Corp.**
-   - Notice the workflow list updates instantly to show Globex's isolated workspace.
-2. **Cryptographic API Key Lifecycle:**
-   - Navigate to **Organization** (`/organization`) > **API Keys**.
-   - Click **Generate New Key**. Copy the revealed key.
-   - Click the **Trash** icon to revoke a key and verify immediate access revocation.
-3. **Visual DAG Execution & Live WebSocket Streaming:**
-   - Go to **Workflows** (`/workflows`) and edit **Order Processing**.
+   - Observe that the landing page showcases platform features, architectural benchmarks, and templates with **zero private data leakage**.
+2. **User Authentication:**
+   - Click **Sign in** in the top navigation bar.
+   - Log in using `demo@aegisflow.dev` / `Password123!` (or create a new account).
+   - Once authenticated, you will be directed to your tenant workspace.
+3. **Workspace Switching (Multi-Tenancy):**
+   - Click the workspace dropdown in the header (*Acme Ltd.*).
+   - Select **Globex Corp.** (15 workflows) or **Stark Industries** (10 workflows).
+   - Observe that workflows, executions, and metrics update immediately in full isolation.
+4. **Visual DAG Execution & Live WebSocket Streaming:**
+   - Go to **Workflows** (`/workflows`) and edit **Order Processing** (or any active workflow).
    - Click **"Run test"**.
    - Watch the nodes pulse blue as they execute, turn green upon completion, and stream live progress above the canvas.
-4. **Saga Compensation Rollback:**
-   - In the workflow builder, edit a node to configure a failing step downstream of a compensatable node.
-   - Run the workflow and observe the engine automatically execute backward compensation in reverse order.
-5. **MongoDB Change Stream Reactive Trigger:**
+5. **Saga Compensation Rollback:**
+   - In the workflow builder, select a workflow with a compensatable node followed by a step configured to fail.
+   - Run the workflow and observe the engine automatically execute backward compensation in reverse order (LIFO).
+6. **Dead-Letter Queue (DLQ) & Failure Recovery:**
+   - Navigate to **Operations** > **Dead-Letter Queue** (`/failures`).
+   - Inspect captured dead executions, failure error messages, and payload contexts.
+   - Click **Replay** to re-dispatch the failed execution.
+7. **Platform Admin Monitoring (`/admin`):**
+   - Navigate to **Operations** > **Admin Monitoring** (`/admin`).
+   - View live tenant quota utilization gauges, hourly worker latency curves, and the step failure heatmap.
+8. **MongoDB Change Stream Reactive Trigger:**
    - Open a terminal and emit an event document:
      ```powershell
      Invoke-RestMethod -Uri "http://localhost:4000/api/events" -Method POST -Headers @{ "x-tenant-id" = "demo-tenant"; "Content-Type" = "application/json" } -Body '{"eventType":"order.created","payload":{"orderId":"ORD-500"}}'
@@ -350,6 +526,13 @@ Follow these steps to demonstrate the engine's core capabilities:
 
 ---
 
-## 📄 License
+## 📄 Formal Documentation & Submission Report
+
+For the complete technical breakdown and formal evaluation report, please refer to:
+- [`REPORT.md`](REPORT.md) — **Distributed Workflow & Saga Orchestration Report** (Zaalima Final Deliverable).
+
+---
+
+## ⚖️ License
 
 This project was developed for the **Zaalima Internship Program** as an enterprise demonstration of distributed systems, Saga orchestration, and multi-tenant cloud architectures.
