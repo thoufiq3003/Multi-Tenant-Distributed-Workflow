@@ -537,9 +537,15 @@ export async function ensureDemoApiKeys() {
 // --- REST ENDPOINTS ---
 
 app.get('/api/health', (_req, res) => res.json({
-  ok: true,
+  status: 'healthy',
   service: 'aegisflow-api',
+  version: '1.0.0',
   database: mongoReady ? 'mongodb' : 'memory-demo',
+  uptimeSeconds: Math.floor(process.uptime()),
+  memory: {
+    heapUsedMB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024 * 100) / 100,
+    rssMB: Math.round(process.memoryUsage().rss / 1024 / 1024 * 100) / 100
+  },
   time: new Date().toISOString()
 }));
 
