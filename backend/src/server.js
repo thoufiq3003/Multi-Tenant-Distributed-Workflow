@@ -165,7 +165,7 @@ app.use(rateLimit({
   keyGenerator: (req) => `tenant:${req.tenantId || req.ip}`,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  message: { error: 'Rate limit exceeded for this tenant. Please throttle your requests.' }
+  message: { error: 'Rate limit exceeded for this tenant. Please throttle your requests to under 180 req/min.' }
 }));
 
 // 3. Cryptographic API Key Authentication Middleware
