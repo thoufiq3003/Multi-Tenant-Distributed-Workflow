@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "test": "npm test --prefix backend",
+    "test:coverage": "npm run test:coverage --prefix backend",
     "stress-test": "node stress-test.js",
     "dev:full": "concurrently -k -n API,WEB -c blue,green \"npm run dev --prefix backend\" \"vite\""
   },
